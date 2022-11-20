@@ -34,23 +34,17 @@ def calc_entropy_y_given_x_binary_RV(px, conditional_py1x1, conditional_py1x0):
         H -= (1-px) * (conditional_py1x0*np.log2(conditional_py1x0) + (1-conditional_py1x0)*np.log2(1-conditional_py1x0))
     return H
 
-def calculate_lower_bound_GE(N, pi_B, s, q, Pe=0.05):
-    # entropy = 0
-    # for _ in range(N):
-    entropy = N* ((1-pi_B) * (-q*np.log2(q)-(1-q)*np.log2(1-q)) +   \
-                pi_B * (-s*np.log2(s)-(1-s)*np.log2(1-s)) )
-    return entropy * (1-Pe)
 
 def test_calculate_lower_bound_GE():
-    N = 100
+    N = 400
     K = 10
     Pe = 0.05
     # calc Pu0?
 
-    U, q, s, pi_B = sample_population_gilbert_elliot_channel(N, K)
-    lb_ISI = calculate_lower_bound_GE(N, pi_B, s, q, Pe=Pe)
-    lb_no_corr = np.log2(math.comb(N, K))
-    print('lb_GE', lb_ISI)
+    U, ge_model = sample_population_gilbert_elliot_channel2(N, K)
+    lb_GE = ge_model.calculate_lower_bound_GE(N, Pe=Pe)
+    lb_no_corr = np.log2(float(math.comb(N, K)))
+    print('lb_GE', lb_GE)
     print('lb_no_corr', lb_no_corr)
     print('upper bound ML', np.ceil(1.4 * K * np.log(N)/np.log(2)))
     pass
