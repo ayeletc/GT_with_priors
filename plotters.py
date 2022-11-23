@@ -40,7 +40,7 @@ def plot_DD_vs_K_and_T(N, vecT, vecK, count_PD1, enlarge_tests_num_by_factors, n
     if typical_codes:
         typical_label = 'typical codes'
 
-    fig.update_layout(title=method_DD + ' DD || ' + sample_method + '<br>DD vs. K after CoMa and DD <br>\
+    fig.update_layout(title= sample_method + ' || ' + method_DD + ' DD<br>DD vs. K after CoMa and DD <br>\
                             N = ' + str(N) + ', T=T_{' + Tbaseline + '}*[' + str(enlarge_tests_num_by_factors) + '] <br>\
                             ' + typical_label + ', iterations=' + str(nmc),
                         xaxis_title='K',
@@ -201,7 +201,12 @@ def plot_expected_unknown_avg(vecK, expected_unknown, real_unknown, vecT, enlarg
 
     plot_and_save(fig, fig_name='expected_unknown_average', results_dir_path=results_dir_path)
 
-def plot_Psuccess_vs_T(vecTs, count_success_DD, count_success_Tot, vecK, results_dir_path):
+def plot_Psuccess_vs_T(vecTs, count_success_DD, count_success_Tot, vecK, N, nmc, third_step_type, sample_method, method_DD, Tbaseline, 
+                        enlarge_tests_num_by_factors, typical_label, results_dir_path, exact=True):
+    if exact:
+        comment = 'exact analysis'
+    else:
+        comment = 'non-exact analysis'
     fig = go.Figure()
     for idxK,K in enumerate(vecK):
         vecT = vecTs[idxK]
@@ -222,17 +227,26 @@ def plot_Psuccess_vs_T(vecTs, count_success_DD, count_success_Tot, vecK, results
                                 hovertemplate='%{y:.3f}',
                                 name='Psuccess Tot, K=' + str(K)))
 
-    fig.update_layout(title='Probability of success vs. T  <br>\
-                            (success in terms of exact analysis)',
+    fig.update_layout(title= 'Third step: ' + third_step_type + ' || ' + sample_method + ' || ' + method_DD + ' DD \
+                            <br> Probability of success vs. T  || ' + comment + '<br>\
+                            N = ' + str(N) + \
+                            ' || K = ' + str(vecK) + \
+                            ' || T = T_{' + Tbaseline + '}*' + str(enlarge_tests_num_by_factors) + \
+                            ' || #iterations = ' + str(nmc),
                         xaxis_title='T',
                         yaxis_title='#Ps [%]',
                         hovermode="x",
                         hoverlabel = dict(namelength = -1, font_size=16),
                         template='plotly_dark')
+    fig.update_yaxes(range=[0, 100])
+    plot_and_save(fig, fig_name='Ps_vs_T', exact=exact, results_dir_path=results_dir_path)
 
-    plot_and_save(fig, fig_name='Ps_vs_T', results_dir_path=results_dir_path)
+def plot_and_save(fig, fig_name, exact=True, results_dir_path=None):
+    if exact:
+        fig_name = fig_name + '_exact_analysis'
+    else:
+        fig_name = fig_name + '_non_exact_analysis'
 
-def plot_and_save(fig, fig_name, results_dir_path=None):
     if results_dir_path is not None:
         fig.write_html(os.path.join(results_dir_path, fig_name+'.html'), auto_open=True)
     else:

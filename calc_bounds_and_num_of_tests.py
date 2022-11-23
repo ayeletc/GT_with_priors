@@ -8,7 +8,7 @@ Pe = 0.05
 
 
 def calculate_vecT_for_K(K, N, enlarge_tests_num_by_factors, Tbaseline='ML', Pe=0.05, 
-                        sample_method='onlyPu', Pu=None, coeff_mat=None):
+                        sample_method='onlyPu', ge_model=None, Pu=None, coeff_mat=None):
     vecT = []
     if Tbaseline == 'ML': # was ML
         vecT = (np.ceil(1.4 * K * np.log(N)/np.log(2) * np.array(enlarge_tests_num_by_factors))).tolist() # ceil((1-Pemax_theor) * K * log(N/K))
@@ -17,7 +17,7 @@ def calculate_vecT_for_K(K, N, enlarge_tests_num_by_factors, Tbaseline='ML', Pe=
     elif Tbaseline == 'lb_with_priors' and sample_method == 'ISI':
         vecT = (np.ceil(calculate_lower_bound_ISI_m1(N, Pu, coeff_mat, Pe) * np.array(enlarge_tests_num_by_factors))).tolist()
     elif Tbaseline == 'GE':
-        vecT = (np.ceil(calculate_lower_bound_GE(N, Pu, coeff_mat, Pe) * np.array(enlarge_tests_num_by_factors))).tolist()
+        vecT = (np.ceil(ge_model.calculate_lower_bound_GE(N) * np.array(enlarge_tests_num_by_factors))).tolist()
         
 
     return vecT
@@ -36,12 +36,12 @@ def calc_entropy_y_given_x_binary_RV(px, conditional_py1x1, conditional_py1x0):
 
 
 def test_calculate_lower_bound_GE():
-    N = 400
+    N = 100
     K = 10
     Pe = 0.05
     # calc Pu0?
-
-    U, ge_model = sample_population_gilbert_elliot_channel2(N, K)
+    
+    U, ge_model = sample_population_gilbert_elliot_channel2(N, K, ge_model=None)
     lb_GE = ge_model.calculate_lower_bound_GE(N, Pe=Pe)
     lb_no_corr = np.log2(float(math.comb(N, K)))
     print('lb_GE', lb_GE)

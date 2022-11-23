@@ -1,3 +1,4 @@
+import math
 import random
 import numpy as np
 from utils import *
@@ -74,11 +75,11 @@ class GE_model:
             else:
                 return self.probabilities_to_bad_dict['no_prior_given']
 
-    def calculate_lower_bound_GE(self, N, Pe=0.05):
+    def calculate_lower_bound_GE(self, N, Pe=0.0):
         return self.calculate_entropy(N) * (1-Pe)
     
     def calculate_entropy(self, N):
-        return N * ((1-self.pi_B) * (-self.q*np.log2(self.q)-(1-self.q)*np.log2(1-self.q)) +   \
+        return N * ( (1-self.pi_B) * (-self.q*np.log2(self.q)-(1-self.q)*np.log2(1-self.q)) +   \
                     self.pi_B * (-self.s*np.log2(self.s)-(1-self.s)*np.log2(1-self.s)) )
 
     def sort_comb_by_priors_GE(self, N, all_permutations, DD2, DND1):
@@ -142,9 +143,20 @@ class GE_model:
             entropy_error_DD = -prob_error_DD * np.log2(prob_error_DD) - (1-prob_error_DD) * np.log2(1-prob_error_DD)
             self.num_of_permutations = np.ceil(2 ** (T * entropy_error_DD)).astype(np.int64)
 
-        Pw = np.zeros((self.num_of_permutations,))
-        high_prob_permutations = np.zeros((self.num_of_permutations, K_left))
-
+        # print('self.num_of_permutations', self.num_of_permutations)
+        
+        num_of_permutations_binomial = math.comb(len(unknowns), K_left)
+        # print('num_of_permutations_binomial', num_of_permutations_binomial)
+        if num_of_permutations_binomial < 500 and num_of_permutations_binomial > self.num_of_permutations:
+            save_permutations = num_of_permutations_binomial
+        else:
+            save_permutations = np.min([self.num_of_permutations, num_of_permutations_binomial])
+        
+        Pw = np.zeros((save_permutations,))
+        high_prob_permutations = np.zeros((save_permutations, K_left))
+        # if num_of_permutations_binomial < self.num_of_permutations:
+        #     # built the iterator on all the possible options and sort
+        # else:
         # calculate permutations one by one:
         iterable = unknowns
         r = K_left
@@ -154,34 +166,29 @@ class GE_model:
         if r > n:
             print('Do something1')
             return
-        indices = list(range(n))
-        cycles = list(range(n, n-r, -1))
-        permute = tuple(pool[i] for i in indices[:r])
-        prob_permute = self.calc_Pw(permute, DD2, DND1)
-        Pw, high_prob_permutations = add_new_value_and_symbol_keep_sort(Pw, high_prob_permutations, prob_permute, permute)
-        while n:
+        indices = list(range(r))
+        comb = tuple(pool[i] for i in indices)
+        # print(comb)
+        prob_permute = self.calc_Pw(comb, DD2, DND1)
+        Pw, high_prob_permutations = add_new_value_and_symbol_keep_sort(Pw, high_prob_permutations, prob_permute, comb)
+        # iteration = 1
+        while True:
             for i in reversed(range(r)):
-                cycles[i] -= 1
-                if cycles[i] == 0:
-                    indices[i:] = indices[i+1:] + indices[i:i+1]
-                    cycles[i] = n - i
-                else:
-                    j = cycles[i]
-                    indices[i], indices[-j] = indices[-j], indices[i]
-                    permute = tuple(pool[i] for i in indices[:r])
-                    prob_permute = self.calc_Pw(permute, DD2, DND1)
-                    Pw, high_prob_permutations = add_new_value_and_symbol_keep_sort(Pw, high_prob_permutations, prob_permute, permute)
+                if indices[i] != i + n - r:
                     break
             else:
-                # print('Do something2')
-                break
-                # return
+                # print('#iterations in sort = ', iteration)
+                return high_prob_permutations.astype(np.int64), Pw
+            indices[i] += 1
+            for j in range(i+1, r):
+                indices[j] = indices[j-1] + 1
+            comb = tuple(pool[i] for i in indices)
+            # print(comb)
+            prob_permute = self.calc_Pw(comb, DD2, DND1)
+            Pw, high_prob_permutations = add_new_value_and_symbol_keep_sort(Pw, high_prob_permutations, prob_permute, comb)
+            # iteration += 1        
 
-        return high_prob_permutations.astype(np.int64), Pw
-
-    def calc_Pw(self, permute, DD2, DND1):
-        # permute = sorted(permute.tolist() + DD2)
-        
+    def calc_Pw(self, permute, DD2, DND1):        
         # probability of the first item in the permutation:
         if permute[0] in DD2:
             Pw = 1

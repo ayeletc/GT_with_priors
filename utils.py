@@ -1,5 +1,7 @@
+from math import perm
 import numpy as np
 from scipy.io import savemat, loadmat
+
 
 def rand_array_fixed_sum(n1,n2, fixed_sum):
     if 'fixed_sum' not in locals():
@@ -77,7 +79,7 @@ def load_workspace(filename):
         filename = location to load workspace.
     '''
     mat = loadmat(filename)
-    ignore_var = ['__header__', '__version__', '__globals__', 'plot_DD_vs_K_and_T', 'save_workspace', 'load_workspace', 'rand_array_fixed_sum']
+    ignore_var = ['__header__', '__version__', '__globals__', 'plot_DD_vs_K_and_T', 'save_workspace', 'load_workspace', 'rand_array_fixed_sum', 'permutations', 'add_new_value_and_symbol_keep_sort']
     var_dict = {}
     for key in mat.keys():
         if key in ignore_var:
@@ -95,11 +97,72 @@ def load_workspace(filename):
 # for key in var_dict.keys():
 #     globals()[key] = var_dict[key]
 
+def permutations(iterable, r=None):
+    # permutations('ABCD', 2) --> AB AC AD BA BC BD CA CB CD DA DB DC
+    # permutations(range(3)) --> 012 021 102 120 201 210
+    pool = tuple(iterable)
+    n = len(pool)
+    r = n if r is None else r
+    if r > n:
+        return
+    indices = list(range(n))
+    cycles = list(range(n, n-r, -1))
+    permute = tuple(pool[i] for i in indices[:r])
+    print(permute)
+    while n:
+        for i in reversed(range(r)):
+            cycles[i] -= 1
+            if cycles[i] == 0:
+                indices[i:] = indices[i+1:] + indices[i:i+1]
+                cycles[i] = n - i
+            else:
+                j = cycles[i]
+                indices[i], indices[-j] = indices[-j], indices[i]
+                permute = tuple(pool[i] for i in indices[:r])
+                print(permute)
+                break
+        else:
+            return
+    
+def combinations(iterable, r):
+    # combinations('ABCD', 2) --> AB AC AD BC BD CD
+    # combinations(range(4), 3) --> 012 013 023 123
+    pool = tuple(iterable)
+    n = len(pool)
+    if r > n:
+        return
+    indices = list(range(r))
+    comb = tuple(pool[i] for i in indices)
+    print(comb)
+    while True:
+        for i in reversed(range(r)):
+            if indices[i] != i + n - r:
+                break
+        else:
+            return
+        indices[i] += 1
+        for j in range(i+1, r):
+            indices[j] = indices[j-1] + 1
+        comb = tuple(pool[i] for i in indices)
+        print(comb)
+    print('f')
+    return (3, 4)
+
+def add_new_value_and_symbol_keep_sort(values_arr, symbols_arr, value, symbol):
+    idx = values_arr.searchsorted(-value) # minus for descending order
+    if idx < values_arr.shape[0]:
+        values_arr = np.concatenate((values_arr[:idx], [value], values_arr[idx:-1]))
+        symbols_arr = np.concatenate((symbols_arr[:idx], [symbol], symbols_arr[idx:-1]))
+    return values_arr, symbols_arr
+
+
 if __name__ == '__main__':
-    db_path=r'/Users/ayelet/Library/CloudStorage/OneDrive-Technion/Alejandro/count_possibly_defected_results/shelve_raw/countPDandDD_N20_nmc500_methodDD_Sum_typical_Tbaseline_ML_02082022_224856.mat'
-    var_dict = load_workspace(db_path)
-    for key in var_dict.keys():
-        globals()[key] = var_dict[key]
+    # db_path=r'/Users/ayelet/Library/CloudStorage/OneDrive-Technion/Alejandro/count_possibly_defected_results/shelve_raw/countPDandDD_N20_nmc500_methodDD_Sum_typical_Tbaseline_ML_02082022_224856.mat'
+    # var_dict = load_workspace(db_path)
+    # for key in var_dict.keys():
+    #     globals()[key] = var_dict[key]
+    # permutations([1, 2, 3, 4, 5, 6, 7], 2)
+    a = combinations([1, 2, 3, 4, 5, 6, 7], 1)
     pass
 
     

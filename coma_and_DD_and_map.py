@@ -22,11 +22,11 @@ from calc_bounds_and_num_of_tests import *
 # in case we do MAP: if N = 100 => K = 1:7 for enlarge_tests_num_by_factors ≤ 0.5 (checked)
 #                     =if N = 500 => K = ?? (less than 8)
 N                   = 100
-vecK                = [2, 5, 10]#[10, 20, 30, 40]#[10, 50, 100, 150, 200, 250, 300, 350]#[5,10,20,30,40,50] #np.arange(2,50,5)#np.arange(2,20,2)#1:5:30#1:20:150 #10#round(beta * N ^ alpha)
+vecK                = [2, 5, 10, 20, 30]#[10, 20, 30, 40]#[10, 50, 100, 150, 200, 250, 300, 350]#[5,10,20,30,40,50] #np.arange(2,50,5)#np.arange(2,20,2)#1:5:30#1:20:150 #10#round(beta * N ^ alpha)
 sample_method       = 'GE'  # options: 'ISI', 'onlyPu', 'indicative'
 isi_type            = 'asymmetric'
-m                   = 1#20
-nmc                 = 500
+m                   = 1
+nmc                 = 200
 save_raw            = True
 save_fig            = True
 save_path           = r'/Users/ayelet/Library/CloudStorage/OneDrive-Technion/Alejandro/count_possibly_defected_results/shelve_raw'
@@ -37,11 +37,11 @@ add_dd_based_prior  = False
 orig_prior_weight   = 0.5
 use_typical_codes   = [True] # options: True,False
 ones_zeros_ratio_th = 0.1
-enlarge_tests_num_by_factors = [ 0.8, 0.9, 1, 1.25]#[0.75, 0.9, 1, 1.25]# [0.5, 0.75, 1, 1.5]
+enlarge_tests_num_by_factors = [ 0.7, 0.8, 0.9, 1]#[0.75, 0.9, 1, 1.25]# [0.5, 0.75, 1, 1.5]
 Tbaseline           = 'ML' # options: 'ML', 'lb_no_priors', 'lb_with_priors'
 methods_DD          = ['Normal']#{'Normal', 'Sum'} # options: Normal, Iterative, Sum
 calc_Pu             = 1
-third_step_type     = 'map_new' # options: ['scomp_dont_complete', 'scomp_complete', 'map_per_permutation', 'map_new']
+third_step_type     = 'MLE' # options: ['scomp_dont_complete', 'scomp_complete', 'MAP', 'MLE']
 calc_Pw             = 1
 debug_mode          = False
 random.seed(123)
@@ -63,8 +63,9 @@ for typical_codes in use_typical_codes:
         count_unknown2 = np.zeros((numOfK, num_of_test_scale))
         count_unknown2_verif = np.zeros((numOfK, num_of_test_scale))
         count_success_DD = np.zeros((numOfK, num_of_test_scale))
+        count_success_DD_non_exact = np.zeros((numOfK, num_of_test_scale))
         count_add_success_third_step = np.zeros((numOfK, num_of_test_scale))
-        count_success_non_exact = np.zeros((numOfK, num_of_test_scale))
+        count_success_non_exact_third_step = np.zeros((numOfK, num_of_test_scale))
         count_not_detected = np.zeros((numOfK, num_of_test_scale))
         expected_notDetected = np.zeros((numOfK, num_of_test_scale))
         expected_DD = np.zeros((numOfK, num_of_test_scale))
@@ -80,9 +81,11 @@ for typical_codes in use_typical_codes:
             K = vecK[idxK]
             print('K = ' + str(K))
             # For each K calculate number of test according the Tml and scale factor
-            
+            ge_model = None
+            if sample_method == 'GE': # create the ge model 
+                _, ge_model = sample_population_gilbert_elliot_channel2(N, K, ge_model)
             vecT = calculate_vecT_for_K(K, N, enlarge_tests_num_by_factors, Tbaseline=Tbaseline, Pe=Pe, 
-                        sample_method=sample_method, Pu=None, coeff_mat=None)
+                        sample_method=sample_method, ge_model=ge_model, Pu=None, coeff_mat=None)
             vecTs.append(vecT)
             for idxT in range(num_of_test_scale):
                 T = np.int16(vecT[idxT])
@@ -104,7 +107,7 @@ for typical_codes in use_typical_codes:
                 expected_DD[idxK, idxT]  = K*(1-(1-p*(1-p)**(nPD-1))**T)#nPD*p_defective*(1-(1-p*(1-p)**(nPD-1))**T) # version1 - p_defective appears once
                 # expected_DD[idxK, idxT]  = nPD*(1-(1-p_d efective*p*(1-p)**(nPD-1))**T) # version 2 - take in account p_defective for each row probability
                 expected_notDetected[idxK, idxT] = K - expected_DD[idxK, idxT]
-                ge_model = None
+                
                 for nn in range(nmc):
                     # print('nn', nn)
                     ## Sample
@@ -158,7 +161,7 @@ for typical_codes in use_typical_codes:
                     if len(PD1) <= K: # all the PD are DD - all defective found
                         count_DD2[idxK, idxT] += len(PD1)
                         count_success_DD[idxK, idxT] += 1
-                        count_success_non_exact[idxK, idxT] += 1
+                        count_success_DD_non_exact[idxK, idxT] += 1
                         continue
                     ## 2. WORKING Definite Defective
                     # steps 1&2
@@ -176,7 +179,7 @@ for typical_codes in use_typical_codes:
                         if len(DD2) >= K: # all defective found
         #                     fprintf('All defective found\n')
                             count_success_DD[idxK, idxT] += 1
-                            count_success_non_exact[idxK, idxT] +=1
+                            count_success_DD_non_exact[idxK, idxT] +=1
                             continue
                         really_defective = np.where(U==1)[1].tolist()
                         num_of_false_positive_in_DD2 = [e for e in DD2 if e not in really_defective]
@@ -184,7 +187,7 @@ for typical_codes in use_typical_codes:
                             print('Something wrong with the DD - not defective detected')
                             pass
                     ## 2. TRY iterative Definite Defective - currently there is a bug:
-                    # TODO = check in the notes!
+
                     # I need to see in my notes what we said about participating
                     # item and sum=1
                     # steps 1&2
@@ -212,7 +215,7 @@ for typical_codes in use_typical_codes:
                         if len(DD2) >= K: # all defective found
         #                     fprintf('All defective found\n')
                             count_success_DD[idxK, idxT] += 1
-                            count_success_non_exact[idxK, idxT] += 1
+                            count_success_DD_non_exact[idxK, idxT] += 1
                             continue 
                     ##
                     elif method_DD == 'Sum':
@@ -247,98 +250,24 @@ for typical_codes in use_typical_codes:
                         if len(DD2) >= K: # all defective found
         #                     fprintf('All defective found\n')
                             count_success_DD[idxK, idxT] += 1
-                            count_success_non_exact[idxK, idxT] += 1
+                            count_success_DD_non_exact[idxK, idxT] += 1
                             continue 
         #                 if ~isempty(helpful_iter) && length(helpful_iter) > 1
         #                     fprintf([num2str(length(helpful_iter)) ' helpful iter\n'])
-                    
+
                     # find all unknown
                     unknown2 = [e for e in PD1 if e not in DD2]#PD1[PD1 not in DD2][0]
                     # print('#PD = {} || #DD = {} || #unknown = {}'.format(len(PD1), len(DD2), len(unknown2)))
                     count_unknown2[idxK, idxT] += len(unknown2)
                     count_unknown2_verif[idxK, idxT] += len(PD1) - len(DD2)
                     count_not_detected_defectives = K-len(DD2)
+                    count_success_DD_non_exact[idxK, idxT] += (len(DD2) / K)
+
                     ## 3. MAP?
                     if not do_third_step:
                         continue
-                    if third_step_type == 'map_per_permutation':
-                        # 3.1 calcualte new priors based on X(Y==1, PD1)
-                        Pu3 = np.copy(Pu)
-                        new_prior_test_based = np.zeros(Pu.shape)
-                        new_prior_test_based2 = np.zeros(Pu.shape)
-                        for tt in range(X.shape[0]):
-                            if Y[tt] == 0:
-                                continue
-                            # calculate sum over not DD
-                            participants = np.where(X[tt,PD1] == 1)[0] # the indices of the PD that participate int the ii test
-                                                                # the corresponding index in X = PD1(participants)
-                            participants_who_are_DD = [e for e in PD1[participants] if e in DD2]
-                            count_participant_who_are_DD = len(participants_who_are_DD)
-                            if count_participant_who_are_DD > 0:
-                                # is there something I can deduce if there is a DD in the line?
-                                continue
-                            # if there is no DD in the line - we give the participants priors
-                            nParticipants = len(participants)
-                            prior = 1+1/nParticipants 
-                            participants_true_idx = PD1[participants]
-                            for participant in participants_true_idx:
-                                Pu3[0,participant] *= prior # TODO: check is this is really the desired calc
-                                new_prior_test_based[0,participant] += prior
-                                new_prior_test_based2[0,participant] += 1/nParticipants
-                        # normalize new priors:
-                        Pu3 = Pu3 / np.sum(Pu3)
-                        new_prior_test_based = new_prior_test_based / np.sum(new_prior_test_based)
-                        new_prior_test_based1 = (Pu + new_prior_test_based) * K / np.sum(Pu + new_prior_test_based) # TODO: check what is the desired normalization factor
-                        new_prior_test_based2 = new_prior_test_based2 / np.sum(new_prior_test_based2)
-                            
-                        # 3.2 start MAP
-                        print('#unknown = {}, #not_detected_yet = {}'.format(count_unknown2, count_not_detected_defectives))
-                        try:
-                            all_permutations3 = np.array(list(itertools.combinations(unknown2, count_not_detected_defectives)))
-                        except:
-                            print('could not find permutations')
-                            continue
-                        
-                        if count_not_detected_defectives == 1: # fix size 
-                            all_permutations3 = all_permutations3.T
-                        num_of_permutations3 = all_permutations3.shape[0]
-                        
-                        apriori = invalid*np.ones((num_of_permutations3,1))
-                        for comb in range(num_of_permutations3):
-                            # calculate Y for the w-th permutation 
-                            permute = all_permutations3[comb,:].tolist()
-                            U_forW = np.zeros((1,N))
-                            U_forW[0,permute + DD2] = 1
-                            
-                            X_forW = X*U_forW
-                            Y_forW = np.sum(X_forW, 1) > 0
 
-                            # possible case: Yw = Y
-                            # the case: Yw = 0 and Y = 1 is possible when T is too small
-                            # for example: U = [1 0 0] T=1 X = [0 0 0]
-
-                            # skip the case: Yw = 1 and Y = 0:
-                            if (Y_forW != Y).any():
-                                continue
-                            
-                            apriori[comb] = 1#overflow_const
-                            for tt in range(T):
-                                num_of_ones_in_Xwt = np.sum(X_forW[tt,:] == 1)
-                                P_q = overflow_const * p**num_of_ones_in_Xwt
-                                P_Xsw_t = P_q
-                                for ii in permute: # TODO: do I need to add DD2?
-                                    P_Xsw_t = P_Xsw_t * new_prior_test_based1[0,ii]#Pu3(ii)
-                                
-                                apriori[comb] *= P_Xsw_t # get zeros
-                            
-                        max_likelihood_W = np.argmax(apriori)
-                        estU = np.zeros(U.shape)
-                        estU[0, all_permutations3[max_likelihood_W,:]] = 1  
-                        estU[0, DD2] = 1
-                        if np.sum(U != estU) == 0:
-                            count_add_success_third_step[idxK, idxT] += 1
-
-                    elif third_step_type == 'map_new':
+                    if third_step_type == 'MAP':
                         # 3.1 calculate new priors based on X(Y==1, PD1) (after DD)
                         Pu_DD2 = np.zeros((1, len(PD1)))
                         for tt in range(T):
@@ -361,23 +290,20 @@ for typical_codes in use_typical_codes:
                         idx_of_DD_in_PD_coor = [list(PD1).index(item) for item in DD2]
                         # Pu_DD2[0,idx_of_DD_in_PD_coor] = 1
                         # 3.2 start MAP
-                        print('#unknown = {}, #not_detected_yet = {}'.format(len(unknown2), count_not_detected_defectives))
+                        # print('#unknown = {}, #not_detected_yet = {}'.format(len(unknown2), count_not_detected_defectives))
                         # if len(unknown2) - count_not_detected_defectives > 30:
                         #     continue
-                        # try:
-                        #     all_permutations3 = np.array(list(itertools.combinations(unknown2, count_not_detected_defectives)))
-                        # except:
-                        #     print('could not find permutations')
-                        #     continue
+                        
                         if sample_method == 'GE':
-                            # TODO: add 'add_dd_based_prior' option to take this knowledge in account
+
                             if add_dd_based_prior: 
                                 pass
 
                             if is_sort_comb_by_priors:
-                                print('sort permutations')
+                                # print('sort permutations')
                                 # all_permutations3, Pw_sorted, Pu3 = ge_model.sort_comb_by_priors_GE(N, all_permutations3, DD2, DND1)
                                 all_permutations3, Pw_sorted = ge_model.sort_comb_by_priors_GE_cut_by_entropy(K, T, nPD, DD2, DND1, unknown2)
+
                             pass
                         else:
                             if add_dd_based_prior: 
@@ -388,8 +314,7 @@ for typical_codes in use_typical_codes:
 
                                 Pu3 = orig_prior_weight * Pu[:,PD1] + (1-orig_prior_weight) * Pu_DD2
                                 Pu3[0, zero_probability_idx_Pu.tolist()] = 0
-                                
-                                # TODO: do I need to normalize the prob?
+
                             else:
                                 Pu3 = Pu[:,PD1].copy()
                             Pu3[0,idx_of_DD_in_PD_coor] = 1                        
@@ -423,12 +348,12 @@ for typical_codes in use_typical_codes:
                                 correctPw_outof_maxPw[idxK, idxT, nn] = Pw_sorted[ii]/Pw_sorted[0]
                                 pass
                         '''
-                        apriori = invalid*np.ones((num_of_permutations3,1))
+                        apriori = invalid*np.ones((Pw_sorted.shape[0],1))
                         item_permute = 0
                         valid_options = 0
-                        print('num_of_permutations3', num_of_permutations3)
-                        for comb in range(num_of_permutations3):                            
-                            if True:#not debug_mode:
+                        # print('num_of_permutations3', num_of_permutations3)
+                        for comb in range(Pw_sorted.shape[0]):                            
+                            if not debug_mode:
                                 if Pw_sorted[comb] / Pw_sorted[0] < 0.1 and valid_options >=1: # the rate was bigger than 0.6 in sim for the true defective set
                                     break
                             item_permute += 1
@@ -495,13 +420,45 @@ for typical_codes in use_typical_codes:
                         iter_of_true_permute[idxK, idxT, nn] = max_likelihood_W
                         Pw_of_true_out_of_max_Pw[idxK, idxT, nn] = Pw_sorted[max_likelihood_W] / Pw_sorted[0]
 
-                        if np.sum(U != estU) == 0:
-                            count_add_success_third_step[idxK, idxT] += 1
-                            count_success_non_exact[idxK, idxT] += 1
-                        else:
-                            detected_defectives = np.where(estU==1)[1]
-                            not_detected = set(true_defective_set)-set(detected_defectives)
-                            count_success_non_exact[idxK, idxT] += (K-len(not_detected))/K                            
+                        ''' 
+                        TODO: I can decrease the num_of_permutations when 
+                        nchoosek (unknown, not detected)<<#permutations I find using 2^(T*error_entropy)
+                        '''
+                    elif third_step_type == 'MLE':
+                        try:
+                            all_permutations3_no_prior = np.array(list(itertools.combinations(unknown2, count_not_detected_defectives)))
+                            num_of_all_permutations3_no_prior = all_permutations3_no_prior.shape[0]
+                        except:
+                            print('could not find permutations')
+                            continue
+                        # we want to find estW: estW = argmax{P(Y|W)}
+                        # mle_error_counter = np.zeros((1,num_of_all_permutations3_no_prior))
+                        max_likelihood_W = None
+                        min_error_counter = np.inf
+                        # try each permutation w: 
+                        for w, permute in enumerate(all_permutations3_no_prior):
+                            # calculate Y for this permutation Y|W=w
+                            # permute = all_permutations3_no_prior[w,:]
+                            U_forW = np.zeros((1,N))
+                            U_forW[0,permute] = 1
+                            X_forW = X*U_forW
+                            Y_forW = np.sum(X_forW, 1) > 0
+                            # evaluate Y
+                            # mle_error_counter[0, w] = sum(Y_forW != Y)
+                            # if mle_error_counter[0, w] == 0:
+                            #     max_likelihood_W = w
+                            #     break
+                            error_counter = np.sum(Y_forW != Y)
+                            if error_counter < min_error_counter:
+                               min_error_counter = error_counter
+                               max_likelihood_W = w
+                               if error_counter == 0: # Yw = Y
+                                   break 
+                        # if max_likelihood_W is None:
+                        #     max_likelihood_W = np.argmin(mle_error_counter)
+                        estU = np.zeros(U.shape)
+                        estU[0, all_permutations3_no_prior[max_likelihood_W,:]] = 1  
+                        estU[0, DD2] = 1
 
                     elif third_step_type == 'scomp_dont_complete':
                         # (1) try the first subset
@@ -531,63 +488,76 @@ for typical_codes in use_typical_codes:
                         pass
 
                         estU = try_U
-                        if np.sum(U != estU) == 0:
-                            count_add_success_third_step[idxK, idxT] += 1
-                            count_success_non_exact[idxK, idxT] += 1
-                        else:
-                            detected_defectives = np.where(estU==1)[1]
-                            not_detected = set(true_defective_set)-set(detected_defectives)
-                            count_success_non_exact[idxK, idxT] += (K-not_detected)/K
-                            
-
+                    if np.sum(U != estU) == 0:
+                        count_add_success_third_step[idxK, idxT] += 1
+                        count_success_non_exact_third_step[idxK, idxT] += (K-len(DD2))/K
+                    else:
+                        # count only the items detected in the 3rd step 
+                        detected_defectives = np.where(estU==1)[1] # may be errornous detection
+                        not_detected = set(true_defective_set)-set(detected_defectives)
+                        num_of_correct_detection = K-len(not_detected)
+                        count_success_non_exact_third_step[idxK, idxT] += (num_of_correct_detection-len(DD2))/K 
+                        
+        # Normalize success and counters
         
         count_success_DD *= 100/nmc
         count_add_success_third_step *= 100/nmc
-        count_success_exact_Tot = count_success_DD + count_add_success_third_step
-        count_success_non_exact *= 100/nmc
-        print('count_success_exact_Tot', count_success_exact_Tot)
-        print('count_success_non_exact', count_success_non_exact)
-        ## Normalize counters
+        count_success_exact_tot = count_success_DD + count_add_success_third_step
+        count_success_DD_non_exact *= 100/nmc
+        count_success_non_exact_third_step *= 100/nmc
+        count_success_non_exact_tot = count_success_DD_non_exact + count_success_non_exact_third_step
+        print('count_success_exact_tot', count_success_exact_tot)
+        print('count_success_exact_non_exact_tot', count_success_non_exact_tot)
+        
         count_DND1 = count_DND1 / nmc
         count_PD1 = count_PD1 / nmc
         count_DD2 = count_DD2 / nmc
         count_DND3 = count_DND3 / nmc
         count_PD3 = count_PD3 / nmc
-        count_unknown2 = count_unknown2 / (nmc - count_success_DD) # count_unknown2 / nmc #
-        count_unknown2_verif = count_unknown2_verif / (nmc - count_success_DD) # count_unknown2 / nmc #
+        count_unknown2 = count_unknown2 / (nmc - count_success_DD) 
+        count_unknown2_verif = count_unknown2_verif / (nmc - count_success_DD) 
         expected_unknown = expected_PD - expected_DD
         count_not_detected = np.matlib.repmat(np.array(vecK), num_of_test_scale,1).T - count_DD2
-        #%% Make resutls directory
+        
+        # Make resutls directory
         results_dir_path = None
-        if save_fig or save_raw:
-            typical_label = '_nottypical'
-            if typical_codes:
-                typical_label = '_typical'
-            
-            third_step_label = third_step_type
-            if not do_third_step:
-                third_step = 'None'
-            
+
+        typical_label = '_nottypical'
+        if typical_codes:
+            typical_label = '_typical'
+        
+        third_step_label = third_step_type
+        if not do_third_step:
+            third_step = 'None'
+
+        if save_fig or save_raw:    
             time_str = datetime.now().strftime("%d%m%Y_%H%M%S")
-        #     vecTStr = strrep(strrep(num2str(orgVecT), ' ', '_'), '__','_')
             experiment_str = 'N' + str(N) + '_nmc' + str(nmc) + '_methodDD_' + method_DD + '_thirdStep_' + third_step_label + typical_label + '_Tbaseline_' +  Tbaseline + '_'
             results_dir_path = os.path.join(save_path, 'countPDandDD_' + experiment_str + time_str)
             os.mkdir(results_dir_path)
         
         #%% Visualize
         if is_plot:
-            plot_DD_vs_K_and_T(N, vecT, vecK, count_PD1, enlarge_tests_num_by_factors, nmc, count_DD2, sample_method, method_DD, Tbaseline, typical_codes, results_dir_path)
+            plot_DD_vs_K_and_T(N, vecT, vecK, count_PD1, enlarge_tests_num_by_factors, nmc, count_DD2, sample_method, 
+                                method_DD, Tbaseline, typical_codes, results_dir_path)
             plot_expected_DD(vecK, expected_DD, count_DD2, vecT, enlarge_tests_num_by_factors, results_dir_path)
             plot_expected_PD(vecK, expected_PD, count_PD1, vecT, enlarge_tests_num_by_factors, results_dir_path)
             plot_expected_unknown(vecK, expected_unknown, count_unknown2, vecT, enlarge_tests_num_by_factors, results_dir_path)
             plot_expected_not_detected(vecK, expected_notDetected, count_not_detected, vecT, enlarge_tests_num_by_factors, results_dir_path)
-            plot_expected_unknown_avg(vecK, expected_unknown, count_PD1 - count_DD2, vecT, enlarge_tests_num_by_factors, results_dir_path)
-            plot_Psuccess_vs_T(vecTs, count_success_DD,count_success_exact_Tot, vecK, results_dir_path)
+            plot_expected_unknown_avg(vecK, expected_unknown, count_PD1 - count_DD2, vecT, 
+                                    enlarge_tests_num_by_factors, results_dir_path)
+            plot_Psuccess_vs_T(vecTs, count_success_DD, count_success_exact_tot, vecK, N, nmc, third_step_type, sample_method, 
+                                method_DD, Tbaseline, enlarge_tests_num_by_factors, typical_label,
+                                results_dir_path, exact=True)
+            plot_Psuccess_vs_T(vecTs, count_success_DD_non_exact, count_success_non_exact_tot, vecK, N, nmc, third_step_type, sample_method, 
+                                method_DD, Tbaseline, enlarge_tests_num_by_factors, typical_label,
+                                results_dir_path, exact=False)
 
         #%% Save
         if save_raw:
             fullRawPath = os.path.join(results_dir_path, 'workspace.mat')
             all_variables_names = dir()
+            # remove packages(numpy), functions(calculatePu), set type('not_detected'),... 
             dont_include_variables = ['np', 'numpy', 'pd', 'math', 'itertools', 'random', 'go', 'px', 'datetime', 'os', 'plt', 'shelve', 'reverse', \
                                     'plot_DD_vs_K_and_T', 'plot_expected_DD', 'plot_expected_PD', 'plot_expected_unknown', \
                                     'plot_expected_not_detected', 'plot_expected_unknown_avg', 'plot_Psuccess_vs_T', 'plot_and_save', \
@@ -597,9 +567,10 @@ for typical_codes in use_typical_codes:
                                     'calculatePu', 'calculatePw', 'test_sample_population_no_corr', 'test_sample_population_ISI', \
                                     'test_sample_population_ISI_m1', 'sample_population_indicative', 'sort_comb_by_priors', \
                                     'sort_comb_by_priors_ISI_m1' , \
-                                    'calculate_lower_bound_ISI_m1', 'calc_entropy_y_given_x_binary_RV', 'calc_entropy_binary_RV',
-                                    'test_calculate_lower_bound_ISI_m1',\
-                                    # 'num_of_false_positive_in_DD2', 'enlarge_tests_num_by_factors', 'count_add_success_third_step', 'count_not_detected_defectives', \
+                                    'calculate_lower_bound_ISI_m1', 'calc_entropy_y_given_x_binary_RV', 'calc_entropy_binary_RV', \
+                                    'test_calculate_lower_bound_ISI_m1', \
+                                    'not_detected', 'ge_model', 'perm', 'combinations', 'permutations'\
+                                    'num_of_false_positive_in_DD2', 'enlarge_tests_num_by_factors', 'count_add_success_third_step', 'count_not_detected_defectives', \
                                     '__builtins__', '__cached__', '__doc__', '__file__', '__loader__', '__name__', '__package__','__spec__', 'fig']
             # dont_include_variables.append(dir(plotters), dir(sample_population), dir(calc_bounds_and_num_of_tests))
             variables_to_save = [var for var in all_variables_names if var not in dont_include_variables]

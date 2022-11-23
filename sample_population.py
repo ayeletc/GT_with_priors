@@ -1,5 +1,7 @@
 # from tkinter.tix import Tree
 # from xmlrpc.client import boolean
+from locale import normalize
+from GE_model import GE_model
 from audioop import reverse
 import numpy as np
 import pandas as pd
@@ -326,79 +328,54 @@ def sort_comb_by_priors_ISI_m1(all_permutations, Pu, coeff_mat, DD2, debug_corre
     all_permutations_sorted = all_permutations[Pw_idx,:]
     return all_permutations_sorted, Pw_sorted
 
-def sort_comb_by_priors_GE(N, all_permutations, DD2, DND1, q, s, pi_B):
-    Pw = np.ones((all_permutations.shape[0],))
-    Pu_with_priors = np.zeros((1,N))
-    ''' 
-    calculate Pw
-    P(W) = P(U) = P(Ud1) * P(Ud2|Ud1) * .... * P(Udk|Udk-1, ..., Ud1)
-    '''
-    for ii, permute in enumerate(all_permutations):
-        permute = sorted(permute.tolist() + DD2)
-        # P(Ud1=1):
-        if permute[0] in DD2:
-            Pw[ii] = 1
-        elif permute[0] in DND1:
-            Pw[ii] = 0
-            continue
-        else:
-            Pw[ii] = pi_B
 
-        for jj in range(1,len(permute)):
-            if permute[jj-1] in DD2:
-                # given previous item is defective
-                p_item_is_defective_given_previous = 1-s
-            elif permute[jj-1] in DND1:
-                # given previous item is not defective
-                p_item_is_defective_given_previous = q
-            else:
-                # no given prior about previous item
-                p_item_is_defective_given_previous = pi_B * (1-s) + (1-pi_B) * q
-            Pw[ii] *= p_item_is_defective_given_previous
-        
-        Pu_with_priors[0,permute] += Pw[ii] 
-    # sort all permutations by their probabilities Pw
-    Pw_idx = Pw.argsort()[::-1] # descending order, first has the highest probability
-    Pw_sorted = Pw[Pw_idx]
-    if Pw_sorted[0] == 0:
-        print('overflow?')
-        pass
-    all_permutations_sorted = all_permutations[Pw_idx,:]
-    # normalize Pu_with_priors
-    Pu_with_priors /= np.sum(Pu_with_priors)
-    return all_permutations_sorted, Pw_sorted, Pu_with_priors
+# def calc_conditional_probability_GE(item, s, q, pi_B, DD2, DND1):
+#     if item-1 in DD2:
+#         # given previous item is defective
+#         p_item_is_defective_given_previous = 1-s
+#     elif item-1 in DND1:
+#         # given previous item is not defective
+#         p_item_is_defective_given_previous = q
+#     else:
+#         # no given prior about previous item
+#         if item == 0: # first item, the probabiity is not conditional
+#             p_item_is_defective_given_previous = pi_B
+#         else:
+#             p_item_is_defective_given_previous = pi_B * (1-s) + (1-pi_B) * q
+#     return p_item_is_defective_given_previous
 
-def sample_gilbert_elliot_channel(q,s,N):
-    P = np.array([[1-q, q], [s, 1-s]])
-    pi_G = s/(s+q) # probability of being in State G
-    pi_B = q/(s+q) # probability of being in State B
-   
-    channel_statef = np.zeros((N,))
-    channel_stater = np.zeros((N,))
+def sample_population_gilbert_elliot_channel2(N, K, ge_model, epsilon=0.01):
+    if ge_model is None:
+        q = 10*1/N
+        s=K/N; 
+        if s < 0.1:
+            s = 0.1
+        if N < 200:
+            q /= 4
+        if K/N > 0.3:
+            s = s/4
+        # s = 0.1
+        # q = epsilon*s/(1-epsilon)
+        pi_B = q/(s+q)
+        ge_model = GE_model(s, q, pi_B)
     
-    goodf = random.random() > pi_B
-    goodr = random.random() > pi_B          
+    num_of_iter = 0
+    num_defective_sampled = 0
+    while num_defective_sampled != K:
+        num_of_iter += 1
+        channel_statef, _  = ge_model.sample_gilbert_elliot_channel(N, max_bad=K) 
+        if channel_statef is None: 
+            # there were too much good (bad after inversion) items
+                continue
+        channel_statef = 1-channel_statef
+        num_defective_sampled = np.sum(channel_statef)
+        U = np.zeros((1,N))
+        U[0, :] = channel_statef
+    # print('num_of_iter (until U with K defectives found)', num_of_iter)
+    return U, ge_model
 
-    for ii in range(N):
-        # set goodf = 1 and goodr = 1 if next step is bad (=erasure/defective)
-        if goodf == 1 and goodr == 1:
-            goodf = random.random() < q  
-            goodr = random.random() > q  
-        elif goodf == 1 and goodr == 0:
-            goodf = random.random() > q  
-            goodr = random.random() > 1-s
-        elif goodf == 0 and goodr == 1:
-            goodf = random.random() > 1-s 
-            goodr = random.random() > q 
-        elif goodf == 0 and goodr == 0:
-            goodf = random.random() > 1-s 
-            goodr = random.random() > 1-s
-
-        channel_statef[ii] = goodf
-        channel_stater[ii] = goodr
-    return channel_statef,channel_stater
-
-def sample_population_gilbert_elliot_channel(N, K, s=0.3):
+def sample_population_gilbert_elliot_channel(N, K, s=0.1, method='stop_when_sum_ok', pi_B_factor=1):
+    # possible methos: 'stop_when_sum_ok', 'fix_anyway', 'fix_when_close_enough'
     ''' 
     prob_defective <=> πB in GE
     πB = q/(q+s)
@@ -409,7 +386,7 @@ def sample_population_gilbert_elliot_channel(N, K, s=0.3):
     and we can run the GE markov chain
     '''
     prob_defective = K/N # = πB
-    pi_B = prob_defective
+    pi_B = prob_defective / pi_B_factor # /10 addition to N=100, K=10
     # Forward GE channel
     q = pi_B*s/(1-pi_B) # since eps_B q/(q+s) = eps, and eps_B = 1
 
@@ -418,27 +395,114 @@ def sample_population_gilbert_elliot_channel(N, K, s=0.3):
     we run it until we have #defectives ≥ K 
     if #defectives > K, we sample exactly K defectives among those sapmled in GE
     '''
+    ge_model = GE_model(s, q, pi_B)
     num_defective_sampled = 0
-    while num_defective_sampled < K:
-        channel_statef, _,  = sample_gilbert_elliot_channel(q, s, N) 
-        num_defective_sampled = np.sum(channel_statef)
-        U = np.zeros((1,N))
-        U[0, :] = channel_statef
-    if num_defective_sampled > K:
-        idx_of_GE_defectives = np.where(channel_statef == 1)[0]
-        idx_of_K_defectives = np.random.choice(range(int(num_defective_sampled)), K, replace=False)#np.random.randint(num_defective_sampled, size=K)
-        U = np.zeros((1,N))
-        U[0, idx_of_GE_defectives[idx_of_K_defectives]] = 1
-        
-    return U, q, s, pi_B
+    
+    if method=='stop_when_sum_ok':
+        num_of_iter = 0
+        while num_defective_sampled != K:
+            num_of_iter += 1
+            channel_statef, _  = ge_model.sample_gilbert_elliot_channel(N) 
+            channel_statef = channel_statef
+            num_defective_sampled = np.sum(channel_statef)
+            U = np.zeros((1,N))
+            U[0, :] = channel_statef
+        print('num_of_iter', num_of_iter)
+    elif method=='fix_anyway':
+        while num_defective_sampled < K:
+            channel_statef, _  = ge_model.sample_gilbert_elliot_channel(N) 
+            num_defective_sampled = np.sum(channel_statef)
+            U = np.zeros((1,N))
+            U[0, :] = channel_statef
+        if num_defective_sampled > K:
+            idx_of_GE_defectives = np.where(channel_statef == 1)[0]
+            idx_of_K_defectives = np.random.choice(range(int(num_defective_sampled)), K, replace=False)#np.random.randint(num_defective_sampled, size=K)
+            U = np.zeros((1,N))
+            U[0, idx_of_GE_defectives[idx_of_K_defectives]] = 1
+    elif method=='fix_when_close_enough':
+        while num_defective_sampled > K+2 or num_defective_sampled < K-2:
+            channel_statef, _  = ge_model.sample_gilbert_elliot_channel(N) 
+            num_defective_sampled = np.sum(channel_statef)
+            U = np.zeros((1,N))
+            U[0, :] = channel_statef
+            true_defective_set = np.where(U == 1)[1]
+            print('true_defective_set', true_defective_set)
+        if num_defective_sampled > K:
+            idx_of_GE_defectives = np.where(channel_statef == 1)[0]
+            idx_of_K_defectives = np.random.choice(range(int(num_defective_sampled)), K, replace=False)#np.random.randint(num_defective_sampled, size=K)
+            U = np.zeros((1,N))
+            U[0, idx_of_GE_defectives[idx_of_K_defectives]] = 1
+        elif num_defective_sampled < K:
+            idx_of_not_GE_defectives = np.where(channel_statef == 0)[0]
+            idx_of_K_defectives = np.random.choice(range(len(idx_of_not_GE_defectives)), int(K-num_defective_sampled), replace=False)#np.random.randint(num_defective_sampled, size=K)
+            U = np.zeros((1,N))
+            U[0, idx_of_not_GE_defectives[idx_of_K_defectives]] = 1
+    return U, q, s, pi_B, ge_model
     
 def test_sample_population_gilbert_elliot_channel():
-    N = 10000
+    N = 400
     K = 10    
-    U, _, _, _ = sample_population_gilbert_elliot_channel(N, K, s=0.3)
+    U, _, _, _, _ = sample_population_gilbert_elliot_channel(N, K, s=0.1)
+    participating_items = np.where(U == 1)[1]
     print('#K = ' + str(np.sum(U)))
-    
+    print('participating_items', participating_items)
 
+def test_sample_population_gilbert_elliot_channel2():
+    N = 100
+    K = 50    
+    ge_model = None
+    U, _ = sample_population_gilbert_elliot_channel2(N, K, ge_model)
+    participating_items = np.where(U == 1)[1]
+    print('#K = ' + str(np.sum(U)))
+    print('participating_items', participating_items)
+
+def tune_sample_population_gilbert_elliot_channel():
+    N = 100
+    K = 10    
+    nmc = 1000
+    # for s in np.linspace(0.05, 0.5, 10):
+    #     for pi_B_factor in np.linspace(2, 100, 20):
+    s_list = [0.05, 0.1, 0.2]
+    pi_B_factors = [1]
+
+    store_seq = np.zeros((len(s_list)*len(pi_B_factors)*nmc, N))
+    for idx_s, s in enumerate(s_list):
+        for idx_piB, pi_B_factor in enumerate(pi_B_factors):
+            prob_defective = K/N # = πB
+            pi_B = prob_defective / pi_B_factor # /10 addition to N=100, K=10
+            # Forward GE channel
+            q = pi_B*s/(1-pi_B) # since eps_B q/(q+s) = eps, and eps_B = 1
+            ge_model = GE_model(s, q, pi_B)
+            for nn in range(nmc):
+                channel_statef, _  = ge_model.sample_gilbert_elliot_channel(N) 
+                store_seq[idx_s*nmc+idx_piB*nmc + nn,:] = channel_statef
+
+
+    plt.figure()
+    plt.imshow(store_seq)    
+    plt.show()
+
+def test_sample_population_gilbert_elliot_channel_hist():
+    N = 100
+    K = 10
+    prob_defective = K/N  # = πB
+    pi_B = prob_defective /10
+    s = 0.1 # if N=100 and K=10, s=0.1 and pi_B = prob_defective +0.1 good!
+    # Forward GE channel
+    q = pi_B*s/(1-pi_B) # since eps_B q/(q+s) = eps, and eps_B = 1    
+    
+    nmc = 10000
+    effective_Ks = np.zeros((nmc,))
+    ge_model = GE_model(s, q, pi_B)
+    for nn in range(nmc):
+        channel_statef, _  = ge_model.sample_gilbert_elliot_channel(N) 
+        num_defective_sampled = np.sum(channel_statef)
+        effective_Ks[nn] = num_defective_sampled
+
+    plt.figure()
+    plt.hist(effective_Ks, bins=list(range(N)))
+    plt.show()
+    
 def test_sample_population_indicative():
     ## show that each item has the same probability to be defective
     nmc = 1000
@@ -540,5 +604,8 @@ if __name__ == '__main__':
     # test_sample_population_ISI()
     # test_sample_population_indicative()
     # test_sample_population_ISI_m1()
-    test_sample_population_gilbert_elliot_channel()
+    # test_sample_population_gilbert_elliot_channel_hist()
+    # tune_sample_population_gilbert_elliot_channel()
+    # test_sample_population_gilbert_elliot_channel()
+    test_sample_population_gilbert_elliot_channel2()
     pass
