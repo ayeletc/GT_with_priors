@@ -47,7 +47,7 @@ class GE_model:
                 num_of_bad += 1
                 if num_of_bad > max_bad:
                     return None, None
-        return channel_statef,channel_stater
+        return 1-channel_statef,1-channel_stater
 
 
     def calc_conditional_probability_GE(self):
@@ -81,15 +81,15 @@ class GE_model:
     def calculate_entropy(self, N):
         return N * ( (1-self.pi_B) * (-self.q*np.log2(self.q)-(1-self.q)*np.log2(1-self.q)) +   \
                     self.pi_B * (-self.s*np.log2(self.s)-(1-self.s)*np.log2(1-self.s)) )
-
+    '''
     def sort_comb_by_priors_GE(self, N, all_permutations, DD2, DND1):
         Pw = np.ones((all_permutations.shape[0],))
         Pu_with_priors = np.zeros((1,N))
-        ''' 
+        \''' 
         calculate Pw
         P(W) = P(U) = P(Ud1) * P(Ud2|Ud1) * .... * P(Udk|Udk-1, ..., Ud1) 
         In GE P(Udk|Udk-1, ..., Ud1) = P(Udk|Udk-1)  [markov chain]
-        '''
+        \'''
         for ii, permute in enumerate(all_permutations):
             permute = sorted(permute.tolist() + DD2)
             if permute[0] in DD2:
@@ -115,8 +115,8 @@ class GE_model:
         # normalize Pu_with_priors
         Pu_with_priors /= np.sum(Pu_with_priors)
         return all_permutations_sorted, Pw_sorted, Pu_with_priors
-
-    def sort_comb_by_priors_GE_cut_by_entropy(self, K, T, nPD, DD2, DND1, unknowns):
+    '''
+    def sort_comb_by_priors_GE_cut_by_entropy(self, K, T, nPD, DD2, DND1, unknowns, permutation_factor=50):
         '''
         1. calculate Np the number of permutations we want to check - 2^( T*H(Perror_dd) )
         1.1. calculate Perror_dd
@@ -147,13 +147,17 @@ class GE_model:
         
         num_of_permutations_binomial = math.comb(len(unknowns), K_left)
         # print('num_of_permutations_binomial', num_of_permutations_binomial)
-        if num_of_permutations_binomial < 500 and num_of_permutations_binomial > self.num_of_permutations:
-            save_permutations = num_of_permutations_binomial
+        # if num_of_permutations_binomial < 500 and num_of_permutations_binomial > self.num_of_permutations:
+        #     save_permutations = num_of_permutations_binomial
+        # else:
+        #     save_permutations = np.min([self.num_of_permutations, num_of_permutations_binomial])
+        if num_of_permutations_binomial > self.num_of_permutations:
+            save_permutations = permutation_factor*self.num_of_permutations
         else:
-            save_permutations = np.min([self.num_of_permutations, num_of_permutations_binomial])
-        
+            save_permutations = self.num_of_permutations
         Pw = np.zeros((save_permutations,))
         high_prob_permutations = np.zeros((save_permutations, K_left))
+        num_of_iterations_in_sort = num_of_permutations_binomial
         # if num_of_permutations_binomial < self.num_of_permutations:
         #     # built the iterator on all the possible options and sort
         # else:
@@ -178,7 +182,7 @@ class GE_model:
                     break
             else:
                 # print('#iterations in sort = ', iteration)
-                return high_prob_permutations.astype(np.int64), Pw
+                return high_prob_permutations.astype(np.int64), Pw, num_of_iterations_in_sort
             indices[i] += 1
             for j in range(i+1, r):
                 indices[j] = indices[j-1] + 1

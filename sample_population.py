@@ -344,16 +344,18 @@ def sort_comb_by_priors_ISI_m1(all_permutations, Pu, coeff_mat, DD2, debug_corre
 #             p_item_is_defective_given_previous = pi_B * (1-s) + (1-pi_B) * q
 #     return p_item_is_defective_given_previous
 
-def sample_population_gilbert_elliot_channel2(N, K, ge_model, epsilon=0.01):
+def sample_population_gilbert_elliot_channel2(N, K, ge_model, epsilon=0.01, debug=False):
     if ge_model is None:
-        q = 10*1/N
+        # q = 10*1/N
         s=K/N; 
         if s < 0.1:
             s = 0.1
         if N < 200:
-            q /= 4
+            q = 2*1/N
+        elif N > 200:
+            q = 0.5*1/N#0.01#200*1/N
         if K/N > 0.3:
-            s = s/4
+            s = s/10
         # s = 0.1
         # q = epsilon*s/(1-epsilon)
         pi_B = q/(s+q)
@@ -366,12 +368,12 @@ def sample_population_gilbert_elliot_channel2(N, K, ge_model, epsilon=0.01):
         channel_statef, _  = ge_model.sample_gilbert_elliot_channel(N, max_bad=K) 
         if channel_statef is None: 
             # there were too much good (bad after inversion) items
-                continue
-        channel_statef = 1-channel_statef
+            continue
         num_defective_sampled = np.sum(channel_statef)
         U = np.zeros((1,N))
         U[0, :] = channel_statef
-    # print('num_of_iter (until U with K defectives found)', num_of_iter)
+    if debug:
+        print('num_of_iter (until U with K defectives found)', num_of_iter)
     return U, ge_model
 
 def sample_population_gilbert_elliot_channel(N, K, s=0.1, method='stop_when_sum_ok', pi_B_factor=1):
@@ -448,10 +450,13 @@ def test_sample_population_gilbert_elliot_channel():
     print('participating_items', participating_items)
 
 def test_sample_population_gilbert_elliot_channel2():
-    N = 100
-    K = 50    
+    N = 500
+    K = 4    
     ge_model = None
-    U, _ = sample_population_gilbert_elliot_channel2(N, K, ge_model)
+    U, _ = sample_population_gilbert_elliot_channel2(N, K, ge_model, debug=True)
+    # plt.figure()
+    # plt.stem(U)
+    # plt.show()
     participating_items = np.where(U == 1)[1]
     print('#K = ' + str(np.sum(U)))
     print('participating_items', participating_items)
