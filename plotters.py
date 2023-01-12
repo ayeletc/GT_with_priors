@@ -4,12 +4,79 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots #TODO add success heatmap/graph
 from plotly.offline import plot #TODO check this out https://stackoverflow.com/a/58848335
+from matplotlib import pyplot as plt
 from utils import * 
 
 
 marker_symbols = ["circle", "x", "star","asterisk"]
 curve_colors = px.colors.qualitative.Plotly
 
+def plot_status_before_third_step(N, K, T, test_factor, PD1, DD2, true_defective_set):
+    DD_n = np.zeros((N,))
+    PD_n = np.zeros((N,))
+    true_defective_n = np.zeros((N,))
+    DD_n[DD2,] = 0.75
+    PD_n[PD1,] = 0.5
+    true_defective_n[true_defective_set] = 1
+    vecN = np.arange(N)+1
+
+    plt.figure()
+    plt.plot(vecN, PD_n, 'b', label='PD')
+    plt.plot(vecN, DD_n, 'r', label='DD')
+    plt.plot(vecN, true_defective_n, 'k', label='the defective set')
+    plt.title('N={}, K={}, T={}={}*T_ML'.format(N,K,T,test_factor))
+    plt.legend()
+    plt.show()
+
+def plot_DD_non_exact_Ps_vs_min_and_avg_hamming_dist(N, K, T, test_factor, count_success_DD_non_exact_vec_nmc, hamming_dist_avg, hamming_dist_min):
+    fig, axs = plt.subplots(2)
+    axs[0].scatter(hamming_dist_avg, count_success_DD_non_exact_vec_nmc, s=100, alpha=0.5)
+    axs[0].grid(True)
+    axs[0].set_xlabel('min hamming distance')
+    axs[0].set_ylabel('Ps')
+    axs[0].set_title('Ps vs. avg(Hamming dist) in Testing matrix \n' + r'N={}, K={}, T={}={}*T_ML'.format(N,K,T,test_factor),wrap=True)
+
+    # axs[1].scatter(hamming_dist_min, count_success_DD_non_exact_vec_nmc, s=100, alpha=0.5)
+    # axs[1].grid(True)
+    # axs[1].set_xlabel('min hamming distance')
+    # axs[1].set_ylabel('Ps')
+    # axs[1].set_title('Ps vs. min(Hamming dist) in Testing matrix \n' + r'N={}, K={}, T={}={}*T_ML'.format(N,K,T,test_factor),wrap=True)
+    heatmap, xedges, yedges = np.histogram2d(hamming_dist_min, count_success_DD_non_exact_vec_nmc)
+    extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
+    heatmap = axs[1].imshow(heatmap.T, extent=extent, origin='lower', interpolation='nearest')
+    axs[1].set_aspect(5)
+    axs[1].set_xlabel('min hamming distance')
+    axs[1].set_ylabel('Ps')
+    axs[1].set_title('Ps vs. min(Hamming dist) in Testing matrix \n' + r'N={}, K={}, T={}={}*T_ML'.format(N,K,T,test_factor),wrap=True)
+    plt.show()
+
+
+def plot_DD_exact_Ps_vs_min_and_avg_hamming_dist(N, K, T, test_factor, count_success_DD_exact_vec_nmc, hamming_dist_avg, hamming_dist_min):
+    hamming_dist_min_items = list(set(hamming_dist_min))
+    hamming_dist_min_hist = np.zeros((int(np.max(hamming_dist_min_items)),2))
+
+    for ii in range(len(count_success_DD_exact_vec_nmc)):
+            hamming_dist_min_hist[int(hamming_dist_min[ii]-1), int(count_success_DD_exact_vec_nmc[ii])] += 1
+    hamming_dist_min_hist[[0,1],:] = hamming_dist_min_hist[[1,0],:] # swap 0,1 for imshow
+    fig, axs = plt.subplots(2)
+    axs[0].scatter(hamming_dist_avg, count_success_DD_exact_vec_nmc, s=100, alpha=0.5)
+    axs[0].grid(True)
+    axs[0].set_xlabel('min hamming distance')
+    axs[0].set_ylabel('success')
+    axs[0].set_title('success vs. avg(Hamming dist) in Testing matrix \n' + r'N={}, K={}, T={}={}*T_ML'.format(N,K,T,test_factor),wrap=True)
+    heatmap = axs[1].imshow(hamming_dist_min_hist[int(np.min(hamming_dist_min_items)):,:].T, interpolation='nearest')
+    # axs[1].set_aspect(5)
+    axs[1].grid(True)
+    axs[1].set_title('success vs. min(Hamming dist) in Testing matrix \n' + r'N={}, K={}, T={}={}*T_ML'.format(N,K,T,test_factor),wrap=True)
+    default_axis_x = np.arange(int(np.max(hamming_dist_min_items)-np.min(hamming_dist_min_items)))
+    new_axis_x = np.arange(int(np.min(hamming_dist_min_items)), int(np.max(hamming_dist_min_items)),2)
+    new_axis_x = [str(item) for item in new_axis_x]
+    axs[1].set_xticklabels(new_axis_x, fontdict=None, minor=False)
+    # axs[1].set_yticklabels([1,0], fontdict=None, minor=False)
+    plt.colorbar(heatmap, ax=axs[1])
+    axs[1].set_xlabel('min hamming distance')
+    axs[1].set_ylabel('success')
+    plt.show()
 
 def plot_DD_vs_K_and_T(N, vecT, vecK, count_PD1, enlarge_tests_num_by_factors, nmc, count_DD2, sample_method, method_DD, Tbaseline, typical_codes, results_dir_path=None):
     fig = go.Figure()
@@ -201,8 +268,8 @@ def plot_expected_unknown_avg(vecK, expected_unknown, real_unknown, vecT, enlarg
 
     plot_and_save(fig, fig_name='expected_unknown_average', results_dir_path=results_dir_path)
 
-def plot_Psuccess_vs_T(vecTs, count_success_DD, count_success_Tot, vecK, N, nmc, third_step_type, sample_method, method_DD, Tbaseline, 
-                        enlarge_tests_num_by_factors, typical_label, results_dir_path, exact=True):
+def plot_Psuccess_vs_T(vecTs, count_success_DD, count_success_Tot, vecK, N, nmc, third_step_label, sample_method, method_DD, Tbaseline, 
+                        enlarge_tests_num_by_factors, typical_label, delta_typical_cols, results_dir_path, exact=True):
     if exact:
         comment = 'exact analysis'
     else:
@@ -227,8 +294,10 @@ def plot_Psuccess_vs_T(vecTs, count_success_DD, count_success_Tot, vecK, N, nmc,
                                 hovertemplate='%{y:.3f}',
                                 name='Psuccess Tot, K=' + str(K)))
 
-    fig.update_layout(title= 'Third step: ' + third_step_type + ' || ' + sample_method + ' || ' + method_DD + ' DD \
-                            <br> Probability of success vs. T  || ' + comment + '<br>\
+    typical_label = typical_label[1:] + ' delta_cols = ' + str(delta_typical_cols)
+    fig.update_layout(title= 'Third step: ' + third_step_label + ' || ' + sample_method + ' || ' + method_DD + ' DD || ' \
+                            + typical_label +
+                            '<br> Probability of success vs. T  || ' + comment + '<br>\
                             N = ' + str(N) + \
                             ' || K = ' + str(vecK) + \
                             ' || T = T_{' + Tbaseline + '}*' + str(enlarge_tests_num_by_factors) + \
@@ -252,6 +321,9 @@ def plot_and_save(fig, fig_name, exact=True, results_dir_path=None):
     else:
         fig.show()
 
+def mark_hidden_in_DD(X, save_path=r'/Users/ayelet/Library/CloudStorage/OneDrive-Technion/Alejandro/temp_res/'):
+
+    pass
 
 if __name__ == '__main__':
     db_path=r'/Users/ayelet/Library/CloudStorage/OneDrive-Technion/Alejandro/count_possibly_defected_results/shelve_raw/countPDandDD_N100_nmc1000_methodDD_Sum_typical_Tbaseline_ML_07082022_092256.mat'
@@ -259,4 +331,4 @@ if __name__ == '__main__':
     for key in var_dict.keys():
         globals()[key] = var_dict[key]
     plot_DD_vs_K_and_T(N, vecT, vecK, count_PD1, enlarge_tests_num_by_factors, nmc, count_DD2, sample_method, method_DD, Tbaseline, typical_codes)
-    pass
+    

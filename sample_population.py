@@ -329,27 +329,12 @@ def sort_comb_by_priors_ISI_m1(all_permutations, Pu, coeff_mat, DD2, debug_corre
     return all_permutations_sorted, Pw_sorted
 
 
-# def calc_conditional_probability_GE(item, s, q, pi_B, DD2, DND1):
-#     if item-1 in DD2:
-#         # given previous item is defective
-#         p_item_is_defective_given_previous = 1-s
-#     elif item-1 in DND1:
-#         # given previous item is not defective
-#         p_item_is_defective_given_previous = q
-#     else:
-#         # no given prior about previous item
-#         if item == 0: # first item, the probabiity is not conditional
-#             p_item_is_defective_given_previous = pi_B
-#         else:
-#             p_item_is_defective_given_previous = pi_B * (1-s) + (1-pi_B) * q
-#     return p_item_is_defective_given_previous
-
-def sample_population_gilbert_elliot_channel2(N, K, ge_model, epsilon=0.01, debug=False):
+def sample_population_gilbert_elliot_channel(N, K, ge_model, epsilon=0.01, debug=False):
     if ge_model is None:
         # q = 10*1/N
         s=K/N; 
         if s < 0.1:
-            s = 0.1
+            s = 0.2 # for N=500, K=10, s=0.1 will output only 1 burst, s=0.15 will output 1 or 2 bursts, 0.2=> even 3 bursts
         if N < 200:
             q = 2*1/N
         elif N > 200:
@@ -376,89 +361,39 @@ def sample_population_gilbert_elliot_channel2(N, K, ge_model, epsilon=0.01, debu
         print('num_of_iter (until U with K defectives found)', num_of_iter)
     return U, ge_model
 
-def sample_population_gilbert_elliot_channel(N, K, s=0.1, method='stop_when_sum_ok', pi_B_factor=1):
-    # possible methos: 'stop_when_sum_ok', 'fix_anyway', 'fix_when_close_enough'
-    ''' 
-    prob_defective <=> πB in GE
-    πB = q/(q+s)
-    s is prob(B=>G) i.e. it controls the length of the defective/erasures sequence
-
-    so given πB and s we have:
-    q = πB*s/(1-πB) = (K/N)*s/(1-K/N)
-    and we can run the GE markov chain
-    '''
-    prob_defective = K/N # = πB
-    pi_B = prob_defective / pi_B_factor # /10 addition to N=100, K=10
-    # Forward GE channel
-    q = pi_B*s/(1-pi_B) # since eps_B q/(q+s) = eps, and eps_B = 1
-
-    ''' 
-    In GE we get stochastic K
-    we run it until we have #defectives ≥ K 
-    if #defectives > K, we sample exactly K defectives among those sapmled in GE
-    '''
-    ge_model = GE_model(s, q, pi_B)
-    num_defective_sampled = 0
-    
-    if method=='stop_when_sum_ok':
-        num_of_iter = 0
-        while num_defective_sampled != K:
-            num_of_iter += 1
-            channel_statef, _  = ge_model.sample_gilbert_elliot_channel(N) 
-            channel_statef = channel_statef
-            num_defective_sampled = np.sum(channel_statef)
-            U = np.zeros((1,N))
-            U[0, :] = channel_statef
-        print('num_of_iter', num_of_iter)
-    elif method=='fix_anyway':
-        while num_defective_sampled < K:
-            channel_statef, _  = ge_model.sample_gilbert_elliot_channel(N) 
-            num_defective_sampled = np.sum(channel_statef)
-            U = np.zeros((1,N))
-            U[0, :] = channel_statef
-        if num_defective_sampled > K:
-            idx_of_GE_defectives = np.where(channel_statef == 1)[0]
-            idx_of_K_defectives = np.random.choice(range(int(num_defective_sampled)), K, replace=False)#np.random.randint(num_defective_sampled, size=K)
-            U = np.zeros((1,N))
-            U[0, idx_of_GE_defectives[idx_of_K_defectives]] = 1
-    elif method=='fix_when_close_enough':
-        while num_defective_sampled > K+2 or num_defective_sampled < K-2:
-            channel_statef, _  = ge_model.sample_gilbert_elliot_channel(N) 
-            num_defective_sampled = np.sum(channel_statef)
-            U = np.zeros((1,N))
-            U[0, :] = channel_statef
-            true_defective_set = np.where(U == 1)[1]
-            print('true_defective_set', true_defective_set)
-        if num_defective_sampled > K:
-            idx_of_GE_defectives = np.where(channel_statef == 1)[0]
-            idx_of_K_defectives = np.random.choice(range(int(num_defective_sampled)), K, replace=False)#np.random.randint(num_defective_sampled, size=K)
-            U = np.zeros((1,N))
-            U[0, idx_of_GE_defectives[idx_of_K_defectives]] = 1
-        elif num_defective_sampled < K:
-            idx_of_not_GE_defectives = np.where(channel_statef == 0)[0]
-            idx_of_K_defectives = np.random.choice(range(len(idx_of_not_GE_defectives)), int(K-num_defective_sampled), replace=False)#np.random.randint(num_defective_sampled, size=K)
-            U = np.zeros((1,N))
-            U[0, idx_of_not_GE_defectives[idx_of_K_defectives]] = 1
-    return U, q, s, pi_B, ge_model
-    
 def test_sample_population_gilbert_elliot_channel():
-    N = 400
-    K = 10    
-    U, _, _, _, _ = sample_population_gilbert_elliot_channel(N, K, s=0.1)
-    participating_items = np.where(U == 1)[1]
-    print('#K = ' + str(np.sum(U)))
-    print('participating_items', participating_items)
-
-def test_sample_population_gilbert_elliot_channel2():
     N = 500
-    K = 4    
+    K = 10
     ge_model = None
-    U, _ = sample_population_gilbert_elliot_channel2(N, K, ge_model, debug=True)
+    U, _ = sample_population_gilbert_elliot_channel(N, K, ge_model, debug=True)
     # plt.figure()
     # plt.stem(U)
     # plt.show()
     participating_items = np.where(U == 1)[1]
     print('#K = ' + str(np.sum(U)))
+    print('participating_items', participating_items)
+
+def test_sample_population_gilbert_elliot_channel_count_bursts():
+    N = 500
+    K = 10
+    nmc = 500
+    count_num_of_bursts = np.zeros((nmc,))
+    for nn in range(nmc):   
+        ge_model = None
+        U, _ = sample_population_gilbert_elliot_channel(N, K, ge_model, debug=False)
+        participating_items = np.where(U == 1)[1]
+        num_of_bursts = 1
+        for ii,item in enumerate(participating_items[:-1]):
+            if item != participating_items[ii+1] - 1:
+                num_of_bursts += 1
+        count_num_of_bursts[nn] = num_of_bursts
+
+    plt.figure()
+    plt.hist(count_num_of_bursts)
+    plt.xlabel('#bursts')
+    plt.title('#bursts, {} iterations'.format(nmc))
+    plt.show()
+    print('#bursts = ' + str(np.sum(U)))
     print('participating_items', participating_items)
 
 def tune_sample_population_gilbert_elliot_channel():
@@ -486,7 +421,7 @@ def tune_sample_population_gilbert_elliot_channel():
     plt.figure()
     plt.imshow(store_seq)    
     plt.show()
-
+    
 def test_sample_population_gilbert_elliot_channel_hist():
     N = 100
     K = 10
@@ -612,5 +547,5 @@ if __name__ == '__main__':
     # test_sample_population_gilbert_elliot_channel_hist()
     # tune_sample_population_gilbert_elliot_channel()
     # test_sample_population_gilbert_elliot_channel()
-    test_sample_population_gilbert_elliot_channel2()
+    test_sample_population_gilbert_elliot_channel_count_bursts()
     pass

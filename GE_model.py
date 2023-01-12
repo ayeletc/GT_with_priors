@@ -58,7 +58,7 @@ class GE_model:
         probabilities_to_bad_dict['previous_is_not_defective'] = self.q
         # no given prior about previous item
         probabilities_to_bad_dict['first_item'] = self.pi_B
-        probabilities_to_bad_dict['no_prior_given'] = self.pi_B * (1-self.s) + (1-self.pi_B) * self.q
+        probabilities_to_bad_dict['no_prior_given'] = self.pi_B# * (1-self.s) + (1-self.pi_B) * self.q
         return probabilities_to_bad_dict
 
     def get_conditional_probability_GE(self, item, DD2, DND1):
@@ -116,7 +116,7 @@ class GE_model:
         Pu_with_priors /= np.sum(Pu_with_priors)
         return all_permutations_sorted, Pw_sorted, Pu_with_priors
     '''
-    def sort_comb_by_priors_GE_cut_by_entropy(self, K, T, nPD, DD2, DND1, unknowns, permutation_factor=50):
+    def sort_comb_by_priors_GE_cut_by_entropy(self, N, K, T, nPD, DD2, DND1, unknowns, permutation_factor=50):
         '''
         1. calculate Np the number of permutations we want to check - 2^( T*H(Perror_dd) )
         1.1. calculate Perror_dd
@@ -173,7 +173,7 @@ class GE_model:
         indices = list(range(r))
         comb = tuple(pool[i] for i in indices)
         # print(comb)
-        prob_permute = self.calc_Pw(comb, DD2, DND1)
+        prob_permute = self.calc_Pw_fixed(N, comb, DD2, DND1)
         Pw, high_prob_permutations = add_new_value_and_symbol_keep_sort(Pw, high_prob_permutations, prob_permute, comb)
         # iteration = 1
         while True:
@@ -188,7 +188,7 @@ class GE_model:
                 indices[j] = indices[j-1] + 1
             comb = tuple(pool[i] for i in indices)
             # print(comb)
-            prob_permute = self.calc_Pw(comb, DD2, DND1)
+            prob_permute = self.calc_Pw_fixed(N, comb, DD2, DND1)
             Pw, high_prob_permutations = add_new_value_and_symbol_keep_sort(Pw, high_prob_permutations, prob_permute, comb)
             # iteration += 1        
 
@@ -203,5 +203,23 @@ class GE_model:
         # multiply transition probabilities
         for jj in range(1,len(permute)):
             p_item_is_defective_given_previous = self.get_conditional_probability_GE(permute[jj-1], DD2, DND1)
+            Pw *= p_item_is_defective_given_previous
+        return Pw
+
+    def calc_Pw_fixed(self, N, permute, DD2, DND1):  # take in account all n items
+        # probability of the first item in the permutation:
+        first_item = 0
+        if first_item in DD2:
+            Pw = 1
+        elif first_item in DND1:
+            Pw = 0
+        else:
+            Pw = self.pi_B
+        # multiply transition probabilities
+        for jj in range(1,N):
+            if jj in permute:
+                p_item_is_defective_given_previous = self.get_conditional_probability_GE(jj, DD2, DND1)
+            else:
+                p_item_is_defective_given_previous = 1-self.get_conditional_probability_GE(jj, DD2, DND1)
             Pw *= p_item_is_defective_given_previous
         return Pw

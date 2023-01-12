@@ -11,7 +11,7 @@ def calculate_vecT_for_K(K, N, enlarge_tests_num_by_factors, Tbaseline='ML', Pe=
                         sample_method='onlyPu', ge_model=None, Pu=None, coeff_mat=None):
     vecT = []
     if Tbaseline == 'ML': # was ML
-        vecT = (np.ceil(1.4 * K * np.log(N)/np.log(2) * np.array(enlarge_tests_num_by_factors))).tolist() # ceil((1-Pemax_theor) * K * log(N/K))
+        vecT = (np.ceil(1.4 * K * np.log2(N) * np.array(enlarge_tests_num_by_factors))).tolist() # ceil((1-Pemax_theor) * K * log(N/K))
     elif Tbaseline == 'lb_no_priors':
         vecT = (np.ceil((1-Pemax_theor) * K * np.log(N/K) * np.array(enlarge_tests_num_by_factors))).tolist()
     elif Tbaseline == 'lb_with_priors' and sample_method == 'ISI':

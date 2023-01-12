@@ -40,6 +40,9 @@ def split_list_into_2_sequence(list, min_item, max_item):
             valid_sequenc = False
     return a, b, valid_sequenc
 
+def compute_HammingDistance(X):
+    return (X[:, None, :] != X).sum(2)
+
 def save_workspace(filename, names_of_spaces_to_save, dict_of_values_to_save):
     '''
         filename = location to save workspace.
@@ -71,8 +74,6 @@ def save_workspace(filename, names_of_spaces_to_save, dict_of_values_to_save):
             pass
     
     savemat(filename, mydic, long_field_names=True)
-
-
 
 def load_workspace(filename):
     '''

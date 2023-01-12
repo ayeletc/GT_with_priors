@@ -1,5 +1,6 @@
 import os
 import time
+from unittest import skip
 from tqdm import tqdm
 import numpy as np
 from datetime import datetime
@@ -10,6 +11,7 @@ from pyrsistent import v
 from sample_population import *
 from plotters import *
 from calc_bounds_and_num_of_tests import *
+import scipy.io
 
 #%% Count #possiblyDefected after CoMa and DD
 # 1.
@@ -24,29 +26,34 @@ from calc_bounds_and_num_of_tests import *
 # in case we do MAP: if N = 100 => K = 1:7 for enlarge_tests_num_by_factors <= 0.5 (checked)
 #                     =if N = 500 => K = ?? (less than 8)
 N                   = 500 #100 # TODO:focus on N=500,K=4,5 
-vecK                = [4,5]#[2, 3, 4, 5, 6]
+vecK                = [10]#[2, 3, 4, 5, 6]
 sample_method       = 'GE'  # options: 'ISI', 'onlyPu', 'indicative'
 isi_type            = 'asymmetric'
 m                   = 1
-nmc                 = 100
-save_raw            = True
-save_fig            = True
+nmc                 = 50
+save_raw            = False
+save_fig            = False
 save_path           = r'/Users/ayelet/Library/CloudStorage/OneDrive-Technion/Alejandro/count_possibly_defected_results/shelve_raw'
 is_plot             = True
 do_third_step       = True
 is_sort_comb_by_priors = True
 add_dd_based_prior  = False
 orig_prior_weight   = 0.5
-use_typical_codes   = [True] # options: True,False
-ones_zeros_ratio_th = 0.1
-enlarge_tests_num_by_factors = [0.75, 0.8, 0.9, 1, 1.25, 1.5, 1.75, 2]# [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.3, 1.7, 2] #[0.85, 0.9, 0.95, 1, 1.25, 1.5, 1.75, 2]#
+use_typical_codes   = [False] # options: True,False
+# ones_zeros_ratio_th = 0.07
+delta_typical_cols  = 0.02#0.025 # for N=500,K=10 and T=0.75ML it allows a difference of 2-3 elements in column
+delta_typical_rows  = 0.03
+enlarge_tests_num_by_factors = [0.75, 0.8, 0.85, 0.9, 0.95, 1, 1.1, 1.2] #[0.25, 0.5, 0.75, 1, 1.25] #[0.5, 0.25, 0.5, 0.75, 1, 1.5]#[0.75, 0.8, 0.9, 1, 1.25, 1.5, 1.75, 2]# [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.3, 1.7, 2] #[0.85, 0.9, 0.95, 1, 1.25, 1.5, 1.75, 2]#
 Tbaseline           = 'ML' # options: 'ML', 'lb_no_priors', 'lb_with_priors'
 methods_DD          = ['Normal']#{'Normal', 'Sum'} # options: Normal, Iterative, Sum
 calc_Pu             = 1
-third_step_type     = 'MAP' # options: ['MAP', 'MLE']
+third_step_type     = 'MAP' # options: ['MAP', 'MLE', 'MAP_for_GE']
 calc_Pw             = 1
 permutation_factor  = 50 # compared [10, 20 , 50, 100] for N=100, K=2,4,6. 50 was the most effective
-debug_mode          = False
+debug_mode          = False 
+check_hamming_dist  = True # count and plot probability of success vs hamming distance in the testing matrix
+plot_status_DD      = False
+check_var           = True
 random.seed(123)
 np.random.seed(123)
 invalid = -1
@@ -58,17 +65,17 @@ for typical_codes in use_typical_codes:
         ## Initialize counters
         numOfK = len(vecK)
         num_of_test_scale = len(enlarge_tests_num_by_factors)
-        count_DND1 = np.zeros((numOfK, num_of_test_scale))
-        count_PD1 = np.zeros((numOfK, num_of_test_scale))
-        count_DD2 = np.zeros((numOfK, num_of_test_scale))
+        count_DND1 = np.zeros((numOfK, num_of_test_scale, nmc))
+        count_PD1 = np.zeros((numOfK, num_of_test_scale, nmc))
+        count_DD2 = np.zeros((numOfK, num_of_test_scale, nmc))
         count_DND3 = np.zeros((numOfK, num_of_test_scale))
         count_PD3 = np.zeros((numOfK, num_of_test_scale))
-        count_unknown2 = np.zeros((numOfK, num_of_test_scale))
-        count_unknown2_verif = np.zeros((numOfK, num_of_test_scale))
-        count_success_DD = np.zeros((numOfK, num_of_test_scale))
-        count_success_DD_non_exact = np.zeros((numOfK, num_of_test_scale))
-        count_add_success_third_step = np.zeros((numOfK, num_of_test_scale))
-        count_success_non_exact_third_step = np.zeros((numOfK, num_of_test_scale))
+        count_unknown2 = np.zeros((numOfK, num_of_test_scale, nmc))
+        # count_unknown2_verif = np.zeros((numOfK, num_of_test_scale))
+        count_success_DD_exact = np.zeros((numOfK, num_of_test_scale, nmc))
+        count_success_DD_non_exact = np.zeros((numOfK, num_of_test_scale, nmc))
+        count_add_success_third_step = np.zeros((numOfK, num_of_test_scale, nmc))
+        count_success_non_exact_third_step = np.zeros((numOfK, num_of_test_scale, nmc))
         count_not_detected = np.zeros((numOfK, num_of_test_scale))
         expected_notDetected = np.zeros((numOfK, num_of_test_scale))
         expected_DD = np.zeros((numOfK, num_of_test_scale))
@@ -82,7 +89,12 @@ for typical_codes in use_typical_codes:
         Pw_of_true_out_of_max_Pw = np.zeros((numOfK, num_of_test_scale, nmc))
         correct_Pw = np.zeros((numOfK, num_of_test_scale, nmc))
         correctPw_outof_maxPw = np.zeros((numOfK, num_of_test_scale, nmc))
-
+        if check_hamming_dist:
+            hamming_dist_avg_vec = np.zeros((numOfK, num_of_test_scale, nmc))
+            hamming_dist_min_vec = np.zeros((numOfK, num_of_test_scale, nmc))
+        # check_var_DD = np.zeros((numOfK, num_of_test_scale, nmc))
+        # check_var_unknowns = np.zeros((numOfK, num_of_test_scale, nmc))
+        
         #%% Start simulation
         for idxK in range(numOfK):
             K = vecK[idxK]
@@ -90,23 +102,37 @@ for typical_codes in use_typical_codes:
             # For each K calculate number of test according the Tml and scale factor
             ge_model = None
             if sample_method == 'GE': # create the ge model 
-                _, ge_model = sample_population_gilbert_elliot_channel2(N, K, ge_model)
+                _, ge_model = sample_population_gilbert_elliot_channel(N, K, ge_model)
             vecT = calculate_vecT_for_K(K, N, enlarge_tests_num_by_factors, Tbaseline=Tbaseline, Pe=Pe, 
                         sample_method=sample_method, ge_model=ge_model, Pu=None, coeff_mat=None)
             vecTs.append(vecT)
             time_start = time.time()
             for idxT in range(num_of_test_scale):
                 T = np.int16(vecT[idxT])
-                # print('T', T)
+                print('T', T)
                 overflow_const = 1 #10^T
 
-                p = np.log(2)/K#1-2**(-1/K) # options: 1/K, log(2)/K, 1-2**(-1/K)
+                p = 1-2**(-1/K) # options: 1/K, log(2)/K, 1-2**(-1/K)
                 expected_PD[idxK, idxT] = K + (N-K) * (1-p*(1-p)**K)**T 
                 nPD = expected_PD[idxK, idxT]
                 expected_DD[idxK, idxT]  = K*(1-(1-p*(1-p)**(nPD-1))**T)#nPD*p_defective*(1-(1-p*(1-p)**(nPD-1))**T) # version1 - p_defective appears once
                 expected_notDetected[idxK, idxT] = K - expected_DD[idxK, idxT]
-                
+                count_success_DD_exact_vec_nmc = np.zeros((nmc,))
+                count_success_DD_non_exact_vec_nmc = np.zeros((nmc,))
+                if check_hamming_dist:
+                    # hamming_dist_avg_vec = np.zeros((nmc,))
+                    # hamming_dist_min_vec = np.zeros((nmc,))
+                    count_PD_nn = np.zeros((nmc,))
+                    count_DD_nn = np.zeros((nmc,))
+                    count_unknowns_nn = np.zeros((nmc,))
+                    min_ones_ratio_in_X = np.zeros((nmc,))
+                    max_ones_ratio_in_X = np.zeros((nmc,))
+                    sum_X_nn = np.zeros((nmc,))
+                    sum_col_in_X_max_nn = np.zeros((nmc,))
+                    list_good_X_occluded = []
+                    list_bad_X_occluded = []
                 for nn in tqdm(range(nmc), desc='T ' + str(T)):
+                # for nn in range(nmc):
                     # print('nn', nn)
                     ## Sample
                     if sample_method == 'ISI':
@@ -119,29 +145,86 @@ for typical_codes in use_typical_codes:
                     elif sample_method == 'indicative':
                         U, Pu, Pw, num_of_distractions = sample_population_indicative(N, K)
                     elif sample_method == 'GE':
-                        U, ge_model = sample_population_gilbert_elliot_channel2(N, K, ge_model)
-                    true_defective_set = np.where(U == 1)[1]                    ## 1. Definitely Not Defective
+                        U, ge_model = sample_population_gilbert_elliot_channel(N, K, ge_model)
+                    true_defective_set = np.where(U == 1)[1].tolist()
+                    ## 1. Definitely Not Defective
                     # Encoder - bernoulli 
                     X =  np.multiply(np.random.uniform(0,1,(T, N)) < p,1) # iid testing matrix
-                    if typical_codes:
-                        non_typical_rows = np.arange(T)
-                        while len(non_typical_rows)>0:
-                            # randomize new rows and insert in X
-                            num_of_non_typical_rows = len(non_typical_rows)
-                            newRows = np.random.uniform(0,1,(num_of_non_typical_rows, N)) < p
-                            X[non_typical_rows,:] = newRows
-                            # find nontypical rows
-                            number_of_ones_in_X = np.sum(X[non_typical_rows,:],1)
-                            number_of_zeros_in_X = N-number_of_ones_in_X
-                            non_typical_rows = np.where(abs(number_of_ones_in_X / N - p) > ones_zeros_ratio_th)[0]
                     
+                    '''typicality in cols
+                    if typical_codes:
+                        non_typical_cols = np.arange(N)
+                        while len(non_typical_cols)>0:
+                            # randomize new rows and insert in X
+                            num_of_non_typical_cols = len(non_typical_cols)
+                            newCols = np.random.uniform(0,1,(T, num_of_non_typical_cols)) < p
+                            X[:, non_typical_cols] = newCols
+                            # find nontypical rows
+                            number_of_ones_in_X = np.sum(X[:,non_typical_cols],0)
+                            number_of_zeros_in_X = N-number_of_ones_in_X
+                            non_typical_cols = np.where(abs(number_of_ones_in_X / N - p) > ones_zeros_ratio_th)[0]
+                            if check_hamming_dist:
+                                min_ones_ratio_in_X[nn] = np.min(abs(number_of_ones_in_X / N - p))
+                                max_ones_ratio_in_X[nn] = np.max(abs(number_of_ones_in_X / N - p))
+                    
+                    ## typicality in all the matrix, not very tight threshold
+                    if typical_codes:
+                        # non_typical_cols = np.arange(N)
+                        # while len(non_typical_cols)>0:
+                            # randomize new rows and insert in X
+                        # num_of_non_typical_cols = len(non_typical_cols)
+                        typical = False
+                        while not typical:
+                            X = np.multiply(np.random.uniform(0,1,(T, N)) < p,1)
+                            sum_rows = np.sum(X, axis=1)
+                            sum_cols = np.sum(X, axis=0)
+                            dist_rows = np.abs(sum_rows / N - p)
+                            dist_cols = np.abs(sum_cols / T - p)
+                            non_typical_row = [r for r in dist_rows if r > ones_zeros_ratio_th]
+                            non_typical_col = [c for c in dist_cols if c > ones_zeros_ratio_th]
+                            if non_typical_row or non_typical_col:
+                                typical = False
+                            else:
+                                typical = True
+                    '''
+                    if typical_codes:
+                        all_X_typical = False
+                        while not all_X_typical:
+                            non_typical_cols = set(np.arange(N))
+                            while non_typical_cols:
+                                non_typical_cols_list = list(non_typical_cols)
+                                X[:,non_typical_cols_list] = np.multiply(np.random.uniform(0,1,(T, len(non_typical_cols))) < p,1)
+                                # if x.shape[1] == 1 => np.sum without axis/addaxis
+                                sum_cols = np.sum(X[:,non_typical_cols_list], axis=0)
+                                dist_cols = np.abs(sum_cols / T - p)
+                                typical_cols = np.array(non_typical_cols_list)[np.where(dist_cols < delta_typical_cols)[0]]
+                                non_typical_cols = non_typical_cols.difference(set(typical_cols))
+                                
+                            # verify that the rows are also typical 
+                            sum_rows = np.sum(X, axis=1)
+                            dist_rows = np.abs(sum_rows / N - p)
+                            non_typical_row = [r for r in dist_rows if r > delta_typical_rows]
+                            all_X_typical = len(non_typical_row) == 0
+
+                        non_typical_cols = list(non_typical_cols)
+
                     tested_mat = X*U
                     Y = np.sum(tested_mat, 1) > 0 
-        #             # count difference between ones and zeros in codebook
-        #             number_of_ones_in_X = sum(X,2)
-        #             number_of_zeros_in_X = N-number_of_ones_in_X
-        #             zeros_and_ones_diff = [zeros_and_ones_diff, number_of_zeros_in_X- number_of_ones_in_X]
 
+                    if check_hamming_dist:
+                        hamming_dist_mat = compute_HammingDistance(X.T)
+                        lower_triangle_hamming = np.tril(hamming_dist_mat)
+                        hamming_dist_avg_vec[idxK, idxT, nn] = np.sum(lower_triangle_hamming)/(N*(N-1))
+                        hamming_dist_min_vec[idxK, idxT, nn] = np.min(lower_triangle_hamming[np.nonzero(lower_triangle_hamming)])
+                        man_min_hamming_dist = N
+                    
+                    X_mark_occlusion = np.zeros((X.shape[0]+1, X.shape[1]))
+                    X_mark_occlusion[1:, :] = X
+                    X_mark_occlusion[0,true_defective_set] = 5 
+                    if check_hamming_dist:
+                        sum_X_nn[nn] = np.sum(X)
+                        sum_col_in_X_max_nn[nn] = np.mean(np.sum(X,axis=0))
+                    
                     # Decoder - CoMa
                     PD1 = np.arange(N)
                     DND1 = []
@@ -154,19 +237,26 @@ for typical_codes in use_typical_codes:
                                 if X[ii,jj] == 1: # definitely not defected
                                     PD1 = PD1[PD1 != jj]
                                     DND1 += [jj]
-                    count_DND1[idxK, idxT] += len(DND1)
-                    count_PD1[idxK, idxT] += len(PD1)
-                    
+                    count_DND1[idxK, idxT, nn] = len(DND1)
+                    count_PD1[idxK, idxT, nn] = len(PD1)
+                    if check_hamming_dist:
+                            count_PD_nn[nn] = len(PD1)
                     if len(PD1) <= K: # all the PD are DD - all defective found
-                        count_DD2[idxK, idxT] += len(PD1)
-                        count_success_DD[idxK, idxT] += 1
-                        count_success_DD_non_exact[idxK, idxT] += 1
+                        count_DD2[idxK, idxT, nn] = len(PD1)
+                        # if check_var:
+                            # check_var_DD[idxK, idxT, nn] = len(DD2)
+                        count_success_DD_exact[idxK, idxT, nn] += 1
+                        if check_hamming_dist:
+                            count_success_DD_exact_vec_nmc[nn] = 1
+                            count_success_DD_non_exact_vec_nmc[nn] = 1
+                            count_DD_nn[nn] = K
+                            count_unknowns_nn[nn] = 0
+                        count_success_DD_non_exact[idxK, idxT, nn] += 1
                         continue
                     ## 2. Definite Defective
                     # steps 1&2
                     if method_DD == 'Normal':
                         DD2 = []
-
                         for ii in range(T):
                             if Y[ii] == 1 and np.sum(X[ii,PD1]) == 1: # only 1 item among the PD equals 1 and the rest equal 0
                                 jj = np.where(X[ii,PD1] == 1)[0][0] # find the definite defective item index in PD1 array
@@ -175,14 +265,27 @@ for typical_codes in use_typical_codes:
                                 defective = PD1[jj]
                                 if defective not in DD2: # add jj only if jj is not already detected as DD
                                     DD2 += [defective]
-                        count_DD2[idxK, idxT] += len(DD2)
-
+                                    X_mark_occlusion[ii+1, defective] = 4
+                            elif Y[ii]==1: # occlusion - mark
+                                participating = PD1[np.where(X[ii,PD1] ==1)[0]]
+                                X_mark_occlusion[ii+1, participating] = 2
+                                defective_occluded = [e for e in participating if e in true_defective_set]
+                                X_mark_occlusion[ii+1, defective_occluded] = 3
+                        
+                        count_DD2[idxK, idxT, nn] = len(DD2)
+                        # if check_var:
+                            # check_var_DD[idxK, idxT, nn] = len(DD2)
+                        
                         if len(DD2) >= K: # all defective found
-                            count_success_DD[idxK, idxT] += 1
-                            count_success_DD_non_exact[idxK, idxT] +=1
+                            count_success_DD_exact[idxK, idxT, nn] += 1
+                            if check_hamming_dist:
+                                count_success_DD_exact_vec_nmc[nn] = 1
+                                count_success_DD_non_exact_vec_nmc[nn] = 1
+                                count_DD_nn[nn] = len(DD2)
+                                count_unknowns_nn[nn] = 0
+                            count_success_DD_non_exact[idxK, idxT, nn] +=1
                             continue
-                        really_defective = np.where(U==1)[1].tolist()
-                        num_of_false_positive_in_DD2 = [e for e in DD2 if e not in really_defective]
+                        num_of_false_positive_in_DD2 = [e for e in DD2 if e not in true_defective_set]
                         if num_of_false_positive_in_DD2:
                             print('Something wrong with the DD - not defective detected')
                             pass
@@ -211,11 +314,18 @@ for typical_codes in use_typical_codes:
                                         DD2 += [defective]
                                         try_again_DD = True
                                     
-                        count_DD2[idxK, idxT] += len(DD2)
+                        count_DD2[idxK, idxT, nn] = len(DD2)
+                        # if check_var:
+                        #     check_var_DD[idxK, idxT, nn] = len(DD2)
                         if len(DD2) >= K: # all defective found
         #                     fprintf('All defective found\n')
-                            count_success_DD[idxK, idxT] += 1
-                            count_success_DD_non_exact[idxK, idxT] += 1
+                            count_success_DD_exact[idxK, idxT, nn] += 1
+                            if check_hamming_dist:
+                                count_success_DD_exact_vec_nmc[nn] = 1
+                                count_success_DD_non_exact_vec_nmc[nn] = 1
+                                count_DD_nn[nn] = len(DD2)
+                                count_unknowns_nn[nn] = 0
+                            count_success_DD_non_exact[idxK, idxT, nn] += 1
                             continue 
                     ##
                     elif method_DD == 'Sum':
@@ -246,24 +356,64 @@ for typical_codes in use_typical_codes:
                                         try_again_DD = True
                                         helpful_iter += [iter]
                                     
-                        count_DD2[idxK, idxT] += len(DD2)
+                        count_DD2[idxK, idxT, nn] = len(DD2)
+                        # if check_var:
+                        #     check_var_DD[idxK, idxT, nn] = len(DD2)
+                        
                         if len(DD2) >= K: # all defective found
-        #                     fprintf('All defective found\n')
-                            count_success_DD[idxK, idxT] += 1
-                            count_success_DD_non_exact[idxK, idxT] += 1
+                            count_success_DD_exact[idxK, idxT, nn] += 1
+                            if check_hamming_dist: 
+                                count_success_DD_exact_vec_nmc[nn] = 1
+                                count_success_DD_non_exact_vec_nmc[nn] = 1
+                                count_DD_nn[nn] = len(DD2)
+                                count_unknowns_nn[nn] = 0
+                            count_success_DD_non_exact[idxK, idxT, nn] += 1
                             continue 
-        #                 if ~isempty(helpful_iter) && length(helpful_iter) > 1
-        #                     fprintf([num2str(length(helpful_iter)) ' helpful iter\n'])
-
+        
                     # find all unknown
                     unknown2 = [e for e in PD1 if e not in DD2]#PD1[PD1 not in DD2][0]
-                    # print('#PD = {} || #DD = {} || #unknown = {}'.format(len(PD1), len(DD2), len(unknown2)))
-                    count_unknown2[idxK, idxT] += len(unknown2)
-                    count_unknown2_verif[idxK, idxT] += len(PD1) - len(DD2)
-                    count_not_detected_defectives = K-len(DD2)
-                    count_success_DD_non_exact[idxK, idxT] += (len(DD2) / K)
+                    
+                    count_unknown2[idxK, idxT, nn] = len(unknown2)
 
+                    if check_hamming_dist:
+                        print('#unknown = {}\t E[unknowns] = {}\t min_hamming_dist = {}'.format(len(unknown2), expected_PD[idxK, idxT]-expected_DD[idxK, idxT], hamming_dist_min_vec[idxK, idxT, nn]))
+                        print('#DD = {}\t \t E[DD] = {}'.format(len(DD2), expected_DD[idxK, idxT]))
+                        count_DD_nn[nn] = len(DD2)
+                        count_unknowns_nn[nn] = len(unknown2)
+                        num_of_permutations_binomial = math.comb(len(unknown2), K-len(DD2))
+                        print('num_of_permutations_binomial', num_of_permutations_binomial)
+                        # if len(unknown2) > 30:
+                        # plt.imshow(X)
+                        # plt.title('bad' if len(unknown2) - len(unknown2) > 32 else 'good')
+                        # plt.show()
+                        if True:
+                            if num_of_permutations_binomial > 5e6:# num_of_permutations_binomial > 5e6
+                                if len(list_bad_X_occluded) < 3:
+                                    list_bad_X_occluded.append(X_mark_occlusion)
+                            elif len(list_good_X_occluded) < 3:
+                                list_good_X_occluded.append(X_mark_occlusion)
+                            if len(list_good_X_occluded) >= 3 and len(list_bad_X_occluded) >= 3:
+                                dic = {'good1': list_good_X_occluded[0], 
+                                        'good2':list_good_X_occluded[1], 
+                                        'good3': list_good_X_occluded[2],
+                                        'bad1': list_bad_X_occluded[0], 
+                                        'bad2':list_bad_X_occluded[1], 
+                                        'bad3': list_bad_X_occluded[2]}
+                                scipy.io.savemat(r'/Users/ayelet/Library/CloudStorage/OneDrive-Technion/Alejandro/temp_res/occlusions.mat', dic)       
+                                pass
+                    # print('#PD = {} || #DD = {} || #unknown = {}'.format(len(PD1), len(DD2), len(unknown2)))
+                    # print('hamming_dist_min', hamming_dist_min)
+                    # if check_var:
+                    #     check_var_unknowns[idxK, idxT, nn] = len(unknown2)
+                    # count_unknown2_verif[idxK, idxT] += len(PD1) - len(DD2)
+                    count_not_detected_defectives = K-len(DD2)
+                    count_success_DD_non_exact[idxK, idxT, nn] += (len(DD2) / K)
+                    if check_hamming_dist:
+                        count_success_DD_non_exact_vec_nmc[nn] = (len(DD2) / K)
+                        # X_mark = mark_hidden_in_DD(X, save_path=r'/Users/ayelet/Library/CloudStorage/OneDrive-Technion/Alejandro/temp_res/')
                     ## 3.
+                    if is_plot and plot_status_DD:
+                        plot_status_before_third_step(N, K, T, enlarge_tests_num_by_factors[idxT], PD1, DD2, true_defective_set) 
                     if not do_third_step:
                         continue
 
@@ -297,7 +447,7 @@ for typical_codes in use_typical_codes:
                             if is_sort_comb_by_priors:
                                 # print('sort permutations')
                                 # all_permutations3, Pw_sorted, Pu3 = ge_model.sort_comb_by_priors_GE(N, all_permutations3, DD2, DND1)
-                                all_permutations3, Pw_sorted, num_of_iterations_in_sort = ge_model.sort_comb_by_priors_GE_cut_by_entropy(K, T, nPD, DD2, DND1, unknown2, permutation_factor=permutation_factor)
+                                all_permutations3, Pw_sorted, num_of_iterations_in_sort = ge_model.sort_comb_by_priors_GE_cut_by_entropy(N, K, T, nPD, DD2, DND1, unknown2, permutation_factor=permutation_factor)
                                 iter_until_detection_third_step_full[idxK, idxT] += num_of_iterations_in_sort
                                 iter_until_detection_third_step_eff[idxK, idxT] += num_of_iterations_in_sort
                             pass
@@ -418,6 +568,57 @@ for typical_codes in use_typical_codes:
                         estU[0, DD2] = 1
                         iter_until_detection_third_step_eff[idxK, idxT] += max_likelihood_W
                         Pw_of_true_out_of_max_Pw[idxK, idxT, nn] = Pw_sorted[max_likelihood_W] / Pw_sorted[0]
+                        
+                    elif third_step_type == 'MAP_for_GE':
+                        all_permutations3, Pw_sorted, num_of_iterations_in_sort = ge_model.sort_comb_by_priors_GE_cut_by_entropy(K, T, nPD, DD2, DND1, unknown2, permutation_factor=permutation_factor)
+                        iter_until_detection_third_step_full[idxK, idxT] += num_of_iterations_in_sort
+                        iter_until_detection_third_step_eff[idxK, idxT] += num_of_iterations_in_sort
+                        num_of_permutations3 = all_permutations3.shape[0]
+                        apriori = invalid*np.ones((Pw_sorted.shape[0],1))
+                        # print('num_of_permutations3', num_of_permutations3)
+                        for comb in range(Pw_sorted.shape[0]):                            
+                            permute = all_permutations3[comb,:].tolist()
+                            U_forW = np.zeros((1,N))
+                            U_forW[0,permute + DD2] = 1
+                            X_forW = X*U_forW
+                            Y_forW = np.sum(X_forW, 1) > 0
+
+                            # possible case: Yw = Y
+                            # the case: Yw = 0 and Y = 1 is possible when T is too small
+                            # for example: U = [1 0 0] T=1 X = [0 0 0]
+
+                            ## skip the probailities calculation and comparison
+                            #  just take the first premute w that satisfy Y==Yw
+                            # [the probailities are already sorted from high to low]
+                            
+                            # skip the case: Yw = 1 and Y = 0:
+                            if (Y_forW != Y).any():
+                                if debug_mode and set(permute+DD2) == set(true_defective_set):
+                                    print('Yw!=Y')
+                                continue
+                            
+                            # apriori[comb] = 1e16#1e32 #prevent overflow_const
+                            Pw_by_Xsw = 1e16
+                            for tt in range(T):
+                                participating_items = np.where(X_forW[tt,:] == 1)[0]
+                                if participating_items.shape[0] == 0:
+                                    continue
+
+                                probability_per_item = [ge_model.get_conditional_probability_GE(item, DD2, DND1) for item in participating_items]
+                                Pw_by_Xsw *= np.prod(probability_per_item)
+                            apriori[comb] = Pw_by_Xsw * p ** np.sum(X_forW == 1)
+                            # print('p ** np.sum(X_forW == 1)', p ** np.sum(X_forW == 1))
+                            if set(permute+DD2) == set(true_defective_set) and debug_mode:
+                                print('true defective set prior: prior(W*) = ' + str(apriori[comb,0]))
+                        iter_until_detection_third_step_full[idxK, idxT] += Pw_sorted.shape[0]
+                        max_likelihood_W = np.argmax(apriori)
+                        if debug_mode:
+                            print('chosen defective set prior: prior(estW) = ' + str(apriori[max_likelihood_W,0]))
+                        estU = np.zeros(U.shape)
+                        estU[0, all_permutations3[max_likelihood_W,:]] = 1  
+                        estU[0, DD2] = 1
+                        iter_until_detection_third_step_eff[idxK, idxT] += max_likelihood_W
+                        Pw_of_true_out_of_max_Pw[idxK, idxT, nn] = Pw_sorted[max_likelihood_W] / Pw_sorted[0]
 
                     elif third_step_type == 'MLE':
                         try:
@@ -452,52 +653,55 @@ for typical_codes in use_typical_codes:
                         estU[0, all_permutations3_no_prior[max_likelihood_W,:]] = 1  
                         estU[0, DD2] = 1
                         
-                    # elif third_step_type == 'scomp_dont_complete':
-                    #     # (1) try the first subset
-                    #     try_subset = DD2
-                    #     try_U = np.zeros(U.shape)
-                    #     while True:#not satisfying:
-                    #         # (2.1) try the current defective subset
-                    #         try_U = np.zeros(U.shape)
-                    #         try_U[0,try_subset] = 1
-                    #         try_tested_mat = X*try_U
-                    #         try_Y = np.sum(try_tested_mat, 1) > 0
-                    #         # check if the set is satisfying
-                    #         satisfying = (Y == try_Y).all() 
-                    #         if satisfying or len(try_subset) == K:
-                    #             break
-
-                    #         # (2.2) find the element which appears in the largest number of tests which are unexplained by K
-                    #         count_times_participating = np.zeros((len(unknown2),))
-                    #         unexplained_tests = np.where(Y != try_Y)[0]
-                    #         for unexplained_test in unexplained_tests:
-                    #             unknown_participants = np.where(X[unexplained_test, unknown2] == 1)[0]
-                    #             count_times_participating[unknown_participants] += 1
-                                 
-                    #         max_participating = unknown2[np.argmax(count_times_participating)] # index in 1,..,N coordinates
-                    #         try_subset.append(max_participating) # add new item to the subset 
-
-                    #     pass
-
-                    #     estU = try_U
                     if np.sum(U != estU) == 0:
-                        count_add_success_third_step[idxK, idxT] += 1
-                        count_success_non_exact_third_step[idxK, idxT] += (K-len(DD2))/K
+                        count_add_success_third_step[idxK, idxT, nn] += 1
+                        count_success_non_exact_third_step[idxK, idxT, nn] += (K-len(DD2))/K
                     else:
                         # count only the items detected in the 3rd step 
                         detected_defectives = np.where(estU==1)[1] # may be errornous detection
                         not_detected = set(true_defective_set)-set(detected_defectives)
                         num_of_correct_detection = K-len(not_detected)
-                        count_success_non_exact_third_step[idxK, idxT] += (num_of_correct_detection-len(DD2))/K 
+                        count_success_non_exact_third_step[idxK, idxT, nn] += (num_of_correct_detection-len(DD2))/K 
+                if False: #check_hamming_dist:
+                    debug_info_df = pd.DataFrame({'PD': count_PD_nn, 
+                                                'DD': count_DD_nn, 
+                                                'unknowns': count_unknowns_nn, 
+                                                'hamming_dist_min':hamming_dist_min_vec,
+                                                'hamming_dist_avg':hamming_dist_avg_vec,
+                                                'min_ones_ratio_in_X': min_ones_ratio_in_X,
+                                                'max_ones_ratio_in_X': max_ones_ratio_in_X,
+                                                'sum_X_nn': sum_X_nn,
+                                                'sum_col_in_X_max_nn': sum_col_in_X_max_nn})
+                    
+                    fig = px.scatter(debug_info_df, x="hamming_dist_min", y="unknowns")
+                    fig.show()
+                    fig = px.scatter(debug_info_df, x="hamming_dist_min", y="DD")
+                    fig.show()
+                    fig = px.scatter(debug_info_df, x="max_ones_ratio_in_X", y="unknowns")
+                    fig.show()
+                    fig = px.scatter(debug_info_df, x="max_ones_ratio_in_X", y="DD")
+                    fig.show()
+                    fig = px.scatter(debug_info_df, x="sum_X_nn", y="unknowns")
+                    fig.show()
+                    fig = px.scatter(debug_info_df, x="sum_X_nn", y="DD")
+                    fig.show()
+                    fig = px.scatter(debug_info_df, x="sum_col_in_X_max_nn", y="DD")
+                    fig.show()
+                    fig = px.scatter(debug_info_df, x="sum_col_in_X_max_nn", y="unknowns")
+                    fig.show()
+                if False: #is_plot and check_hamming_dist:
+                    # plot_DD_exact_Ps_vs_min_and_avg_hamming_dist(N, K, T, enlarge_tests_num_by_factors[idxT], count_success_DD_exact_vec_nmc, hamming_dist_avg_vec, hamming_dist_min_vec)
+                    plot_DD_non_exact_Ps_vs_min_and_avg_hamming_dist(N, K, T, enlarge_tests_num_by_factors[idxT], count_success_DD_non_exact_vec_nmc, hamming_dist_avg_vec, hamming_dist_min_vec)
+
             elapsed = time.time() - time_start            
             print('It took {:.3f}[min]'.format(elapsed/60))
         # Normalize success and counters
         
-        count_success_DD *= 100/nmc
-        count_add_success_third_step *= 100/nmc
-        count_success_exact_tot = count_success_DD + count_add_success_third_step
-        count_success_DD_non_exact *= 100/nmc
-        count_success_non_exact_third_step *= 100/nmc
+        count_success_DD_exact = np.sum(count_success_DD_exact, axis=2) * 100/nmc
+        count_add_success_third_step = np.sum(count_add_success_third_step, axis=2) * 100/nmc 
+        count_success_exact_tot = count_success_DD_exact + count_add_success_third_step
+        count_success_DD_non_exact = np.sum(count_success_DD_non_exact, axis=2) * 100/nmc 
+        count_success_non_exact_third_step = np.sum(count_success_non_exact_third_step, axis=2) * 100/nmc 
         count_success_non_exact_tot = count_success_DD_non_exact + count_success_non_exact_third_step
 
         iter_until_detection_CoMa_and_DD /= nmc
@@ -507,15 +711,13 @@ for typical_codes in use_typical_codes:
         print('count_success_exact_tot', count_success_exact_tot)
         print('count_success_exact_non_exact_tot', count_success_non_exact_tot)
         print('iter_until_detection_tot', iter_until_detection_tot)
-        count_DND1 = count_DND1 / nmc
-        count_PD1 = count_PD1 / nmc
-        count_DD2 = count_DD2 / nmc
-        count_DND3 = count_DND3 / nmc
-        count_PD3 = count_PD3 / nmc
-        count_unknown2 = count_unknown2 / (nmc - count_success_DD) 
-        count_unknown2_verif = count_unknown2_verif / (nmc - count_success_DD) 
+        count_DND1_avg = np.sum(count_DND1, axis=2) / nmc
+        count_PD1_avg = np.sum(count_PD1, axis=2) / nmc
+        count_DD2_avg = np.sum(count_DD2, axis=2) / nmc
+        count_unknown2_avg = np.sum(count_unknown2, axis=2) / (nmc - count_success_DD_exact*nmc/100) 
+        # count_unknown2_verif = count_unknown2_verif / (nmc - count_success_DD_exact) 
         expected_unknown = expected_PD - expected_DD
-        count_not_detected = np.matlib.repmat(np.array(vecK), num_of_test_scale,1).T - count_DD2
+        count_not_detected = np.matlib.repmat(np.array(vecK), num_of_test_scale,1).T - count_DD2_avg
         
         # Make resutls directory
         results_dir_path = None
@@ -526,7 +728,7 @@ for typical_codes in use_typical_codes:
         
         third_step_label = third_step_type
         if not do_third_step:
-            third_step = 'None'
+            third_step_label = 'None'
         
         permutations_label = ''
         if third_step_type == 'MAP':
@@ -540,27 +742,29 @@ for typical_codes in use_typical_codes:
         
         #%% Visualize
         if is_plot:
-            plot_DD_vs_K_and_T(N, vecT, vecK, count_PD1, enlarge_tests_num_by_factors, nmc, count_DD2, sample_method, 
+            plot_DD_vs_K_and_T(N, vecT, vecK, count_PD1_avg, enlarge_tests_num_by_factors, nmc, count_DD2_avg, sample_method, 
                                 method_DD, Tbaseline, typical_codes, results_dir_path)
-            plot_expected_DD(vecK, expected_DD, count_DD2, vecT, enlarge_tests_num_by_factors, results_dir_path)
-            plot_expected_PD(vecK, expected_PD, count_PD1, vecT, enlarge_tests_num_by_factors, results_dir_path)
-            plot_expected_unknown(vecK, expected_unknown, count_unknown2, vecT, enlarge_tests_num_by_factors, results_dir_path)
+            plot_expected_DD(vecK, expected_DD, count_DD2_avg, vecT, enlarge_tests_num_by_factors, results_dir_path)
+            plot_expected_PD(vecK, expected_PD, count_PD1_avg, vecT, enlarge_tests_num_by_factors, results_dir_path)
+            plot_expected_unknown(vecK, expected_unknown, count_unknown2_avg, vecT, enlarge_tests_num_by_factors, results_dir_path)
             plot_expected_not_detected(vecK, expected_notDetected, count_not_detected, vecT, enlarge_tests_num_by_factors, results_dir_path)
-            plot_expected_unknown_avg(vecK, expected_unknown, count_PD1 - count_DD2, vecT, 
+            plot_expected_unknown_avg(vecK, expected_unknown, count_PD1_avg - count_DD2_avg, vecT, 
                                     enlarge_tests_num_by_factors, results_dir_path)
-            plot_Psuccess_vs_T(vecTs, count_success_DD, count_success_exact_tot, vecK, N, nmc, third_step_label, sample_method, 
-                                method_DD, Tbaseline, enlarge_tests_num_by_factors, typical_label,
+            plot_Psuccess_vs_T(vecTs, count_success_DD_exact, count_success_exact_tot, vecK, N, nmc, third_step_label, sample_method, 
+                                method_DD, Tbaseline, enlarge_tests_num_by_factors, typical_label, delta_typical_cols,
                                 results_dir_path, exact=True)
             plot_Psuccess_vs_T(vecTs, count_success_DD_non_exact, count_success_non_exact_tot, vecK, N, nmc, third_step_label, sample_method, 
-                                method_DD, Tbaseline, enlarge_tests_num_by_factors, typical_label,
+                                method_DD, Tbaseline, enlarge_tests_num_by_factors, typical_label,delta_typical_cols,
                                 results_dir_path, exact=False)
-
+            
         #%% Save
         if save_raw:
             fullRawPath = os.path.join(results_dir_path, 'workspace.mat')
             all_variables_names = dir()
             # remove packages(numpy), functions(calculatePu), set type('not_detected'),... 
-            dont_include_variables = ['np', 'numpy', 'pd', 'time', 'tqdm', 'math', 'itertools', 'random', 'go', 'px', 'datetime', 'os', 'plt', 'shelve', 'reverse', \
+            dont_include_variables = ['np', 'scipy', 'scipy.io', 'numpy', 'pd', 'matplotlib', \
+                                    'time', 'tqdm', 'math', 'itertools', 'random', 'go', 'px', \
+                                    'datetime', 'os', 'plt', 'shelve', 'reverse', \
                                     'plot_DD_vs_K_and_T', 'plot_expected_DD', 'plot_expected_PD', 'plot_expected_unknown', \
                                     'plot_expected_not_detected', 'plot_expected_unknown_avg', 'plot_Psuccess_vs_T', 'plot_and_save', \
                                     'save_workspace', 'load_workspace', 'rand_array_fixed_sum', 'split_list_into_2_sequence', \
