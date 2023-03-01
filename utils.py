@@ -1,6 +1,7 @@
 from math import perm
 import numpy as np
 from scipy.io import savemat, loadmat
+from itertools import combinations
 
 
 def rand_array_fixed_sum(n1,n2, fixed_sum):
@@ -125,7 +126,7 @@ def permutations(iterable, r=None):
         else:
             return
     
-def combinations(iterable, r):
+def my_combinations(iterable, r):
     # combinations('ABCD', 2) --> AB AC AD BC BD CD
     # combinations(range(4), 3) --> 012 013 023 123
     pool = tuple(iterable)
@@ -155,6 +156,9 @@ def add_new_value_and_symbol_keep_sort(values_arr, symbols_arr, value, symbol):
         values_arr = np.concatenate((values_arr[:idx], [value], values_arr[idx:-1]))
         symbols_arr = np.concatenate((symbols_arr[:idx], [symbol], symbols_arr[idx:-1]))
     return values_arr, symbols_arr
+
+def prepare_nchoosek_comb(array, k):
+    return list(combinations(array, k))
 
 
 if __name__ == '__main__':

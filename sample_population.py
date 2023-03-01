@@ -69,7 +69,6 @@ def choose_defective_given_probability_to_be_defecive(N, K, P_defective):
     return U
 
 def sample_population_ISI(N, K, m, all_permutations, isi_type='asymmetric', calc_Pw=False, calc_Pu=True):
-    # TODO implement symmetric & general
 
     # ====== Generate infection coefficients matrix ======
     # P(Ui) = sum{ a_ij * P(Uj)}
@@ -83,7 +82,7 @@ def sample_population_ISI(N, K, m, all_permutations, isi_type='asymmetric', calc
         # fill N div m blocks
         curIdx = 1
         while curIdx <= N-m:
-            for ii in range(m): # TODO check range(m) or range(m+1)
+            for ii in range(m):
                 tempcoeff_mat = np.sort(np.squeeze(rand_array_fixed_sum(1, m, 1)))
                 relevantIdx = list(set(np.arange(curIdx,curIdx+m)) - set([curIdx+ii-1]))
                 coeff_mat[curIdx + ii-1, relevantIdx] = tempcoeff_mat
@@ -309,7 +308,7 @@ def sort_comb_by_priors_ISI_m1(all_permutations, Pu, coeff_mat, DD2, debug_corre
         else: 
             list_a, list_b, num_of_sequences = split_list_into_2_sequence(sorted_permute)
             if num_of_sequences <= 2 and list_a[-1] == N:
-                # TODO: calc Pw
+                # calc Pw
                 Pw[0,ii] = Pu[0,sorted_permute[0]]
                 for item in sorted_permute[:-1]:
                     if item == N-1:

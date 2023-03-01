@@ -7,7 +7,7 @@ from datetime import datetime
 import itertools
 import random
 import numpy.matlib
-from pyrsistent import v
+# from pyrsistent import v
 from sample_population import *
 from plotters import *
 from calc_bounds_and_num_of_tests import *
@@ -26,34 +26,38 @@ import scipy.io
 # in case we do MAP: if N = 100 => K = 1:7 for enlarge_tests_num_by_factors <= 0.5 (checked)
 #                     =if N = 500 => K = ?? (less than 8)
 N                   = 500 #100 # TODO:focus on N=500,K=4,5 
-vecK                = [10]#[2, 3, 4, 5, 6]
+vecK                = [3]#[10]#[2, 3, 4, 5, 6]
 sample_method       = 'GE'  # options: 'ISI', 'onlyPu', 'indicative'
 isi_type            = 'asymmetric'
 m                   = 1
-nmc                 = 50
-save_raw            = False
-save_fig            = False
+nmc                 = 500
+save_raw            = True
+save_fig            = True
 save_path           = r'/Users/ayelet/Library/CloudStorage/OneDrive-Technion/Alejandro/count_possibly_defected_results/shelve_raw'
 is_plot             = True
 do_third_step       = True
 is_sort_comb_by_priors = True
 add_dd_based_prior  = False
 orig_prior_weight   = 0.5
-use_typical_codes   = [False] # options: True,False
+use_typical_codes   = [True] # options: True,False
 # ones_zeros_ratio_th = 0.07
-delta_typical_cols  = 0.02#0.025 # for N=500,K=10 and T=0.75ML it allows a difference of 2-3 elements in column
-delta_typical_rows  = 0.03
-enlarge_tests_num_by_factors = [0.75, 0.8, 0.85, 0.9, 0.95, 1, 1.1, 1.2] #[0.25, 0.5, 0.75, 1, 1.25] #[0.5, 0.25, 0.5, 0.75, 1, 1.5]#[0.75, 0.8, 0.9, 1, 1.25, 1.5, 1.75, 2]# [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.3, 1.7, 2] #[0.85, 0.9, 0.95, 1, 1.25, 1.5, 1.75, 2]#
-Tbaseline           = 'ML' # options: 'ML', 'lb_no_priors', 'lb_with_priors'
+# delta_typical_cols  = 0.02#0.025 # for N=500,K=10 and T=0.75ML it allows a difference of 2-3 elements in column
+# delta_typical_rows  = 0.03
+delta_typical_cols  = 0.1# for N=100,K=3 and T=0.75ML 
+delta_typical_rows  = 0.1
+enlarge_tests_num_by_factors =  [0.7, 0.8, 0.85, 0.9, 0.95, 1, 1.1, 1.2] #[0.25, 0.5, 0.75, 1, 1.25] #[0.5, 0.25, 0.5, 0.75, 1, 1.5]#[0.75, 0.8, 0.9, 1, 1.25, 1.5, 1.75, 2]# [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.3, 1.7, 2] #[0.85, 0.9, 0.95, 1, 1.25, 1.5, 1.75, 2]#
+Tbaseline           = 'ML' # options: 'ML', 'lb_no_priors', 'lb_with_priors', 'GE'
 methods_DD          = ['Normal']#{'Normal', 'Sum'} # options: Normal, Iterative, Sum
 calc_Pu             = 1
-third_step_type     = 'MAP' # options: ['MAP', 'MLE', 'MAP_for_GE']
+third_step_type     = 'MAP' # options: ['MAP', 'MLE', 'MAP_for_GE', 'viterbi', 'viterbi+MAP']
+max_paths_for_lva   = 40
 calc_Pw             = 1
-permutation_factor  = 50 # compared [10, 20 , 50, 100] for N=100, K=2,4,6. 50 was the most effective
+permutation_factor  = 20 # compared [10, 20 , 50, 100] for N=100, K=2,4,6. 50 was the most effective
 debug_mode          = False 
 check_hamming_dist  = True # count and plot probability of success vs hamming distance in the testing matrix
 plot_status_DD      = False
 check_var           = True
+max_iteration_for_map = 1e6
 random.seed(123)
 np.random.seed(123)
 invalid = -1
@@ -109,7 +113,7 @@ for typical_codes in use_typical_codes:
             time_start = time.time()
             for idxT in range(num_of_test_scale):
                 T = np.int16(vecT[idxT])
-                print('T', T)
+                print('T = {} || factor = {}'.format(T, enlarge_tests_num_by_factors[idxT]))
                 overflow_const = 1 #10^T
 
                 p = 1-2**(-1/K) # options: 1/K, log(2)/K, 1-2**(-1/K)
@@ -151,42 +155,6 @@ for typical_codes in use_typical_codes:
                     # Encoder - bernoulli 
                     X =  np.multiply(np.random.uniform(0,1,(T, N)) < p,1) # iid testing matrix
                     
-                    '''typicality in cols
-                    if typical_codes:
-                        non_typical_cols = np.arange(N)
-                        while len(non_typical_cols)>0:
-                            # randomize new rows and insert in X
-                            num_of_non_typical_cols = len(non_typical_cols)
-                            newCols = np.random.uniform(0,1,(T, num_of_non_typical_cols)) < p
-                            X[:, non_typical_cols] = newCols
-                            # find nontypical rows
-                            number_of_ones_in_X = np.sum(X[:,non_typical_cols],0)
-                            number_of_zeros_in_X = N-number_of_ones_in_X
-                            non_typical_cols = np.where(abs(number_of_ones_in_X / N - p) > ones_zeros_ratio_th)[0]
-                            if check_hamming_dist:
-                                min_ones_ratio_in_X[nn] = np.min(abs(number_of_ones_in_X / N - p))
-                                max_ones_ratio_in_X[nn] = np.max(abs(number_of_ones_in_X / N - p))
-                    
-                    ## typicality in all the matrix, not very tight threshold
-                    if typical_codes:
-                        # non_typical_cols = np.arange(N)
-                        # while len(non_typical_cols)>0:
-                            # randomize new rows and insert in X
-                        # num_of_non_typical_cols = len(non_typical_cols)
-                        typical = False
-                        while not typical:
-                            X = np.multiply(np.random.uniform(0,1,(T, N)) < p,1)
-                            sum_rows = np.sum(X, axis=1)
-                            sum_cols = np.sum(X, axis=0)
-                            dist_rows = np.abs(sum_rows / N - p)
-                            dist_cols = np.abs(sum_cols / T - p)
-                            non_typical_row = [r for r in dist_rows if r > ones_zeros_ratio_th]
-                            non_typical_col = [c for c in dist_cols if c > ones_zeros_ratio_th]
-                            if non_typical_row or non_typical_col:
-                                typical = False
-                            else:
-                                typical = True
-                    '''
                     if typical_codes:
                         all_X_typical = False
                         while not all_X_typical:
@@ -376,12 +344,12 @@ for typical_codes in use_typical_codes:
                     count_unknown2[idxK, idxT, nn] = len(unknown2)
 
                     if check_hamming_dist:
-                        print('#unknown = {}\t E[unknowns] = {}\t min_hamming_dist = {}'.format(len(unknown2), expected_PD[idxK, idxT]-expected_DD[idxK, idxT], hamming_dist_min_vec[idxK, idxT, nn]))
-                        print('#DD = {}\t \t E[DD] = {}'.format(len(DD2), expected_DD[idxK, idxT]))
+                        # print('#unknown = {}\t E[unknowns] = {}\t min_hamming_dist = {}'.format(len(unknown2), expected_PD[idxK, idxT]-expected_DD[idxK, idxT], hamming_dist_min_vec[idxK, idxT, nn]))
+                        # print('#DD = {}\t \t E[DD] = {}'.format(len(DD2), expected_DD[idxK, idxT]))
                         count_DD_nn[nn] = len(DD2)
                         count_unknowns_nn[nn] = len(unknown2)
                         num_of_permutations_binomial = math.comb(len(unknown2), K-len(DD2))
-                        print('num_of_permutations_binomial', num_of_permutations_binomial)
+                        # print('num_of_permutations_binomial', num_of_permutations_binomial)
                         # if len(unknown2) > 30:
                         # plt.imshow(X)
                         # plt.title('bad' if len(unknown2) - len(unknown2) > 32 else 'good')
@@ -414,10 +382,139 @@ for typical_codes in use_typical_codes:
                     ## 3.
                     if is_plot and plot_status_DD:
                         plot_status_before_third_step(N, K, T, enlarge_tests_num_by_factors[idxT], PD1, DD2, true_defective_set) 
+                    hmm_model = ge_model.model_as_hmm(K, T, len(PD1), p)
+                    hmm_model_2steps = ge_model.model_as_hmm_with_2_steps_memory(K,T,len(PD1), p)
+                    observations = 2*np.ones((N,)).astype(np.int8)
+                    observations[DD2] = 1
+                    observations[DND1] = 0
+                    # observations[PD1] = 2
+
                     if not do_third_step:
                         continue
+                    estU = np.zeros(U.shape)
+                    if third_step_type == 'viterbi':
+                        # map_trajectory, map_probabilities = hmm_model.viterbi_algo(observations)
+                        # observations[[0,-1]] = 1
+                        map_trajectory, map_probabilities = hmm_model.viterbi_algo_adjusted_to_GE(observations)
+                        # map_trajectory, map_probabilities = hmm_model.viterbi_algo_adjusted_to_GE_constrained_state(observations, max_state_1=K)
+                        
+                        map_trajectory = np.array(map_trajectory)
+                        estU[0,map_trajectory == 1] = 1
+                        # senity check - is DD2 in the most likely path?
+                        if len(DD2) > 0 and len(list(set(DD2) - set(np.where(map_trajectory == 1)[0]))) != 0:
+                            print('{} DD2 not in path'.format(nn)) 
+                        
+                    elif third_step_type == 'viterbi+MAP':
+                        possible_combination_found = False
+                        stop_viterbi_without_success = False
+                        top_k = 20
+                        while not possible_combination_found:
+                            # Try 1 step memory
+                            # path_trajs, path_probs, ml_prob, ml_traj = hmm_model.list_viterbi_algo_parallel(observations, topK=top_k)
+                            observations_extended = np.zeros((observations.shape[0]+1,)).astype(np.int8)
+                            observations_extended[:observations.shape[0]] = observations
+                            path_trajs, path_probs, ml_prob, ml_traj = hmm_model.list_viterbi_algo_parallel_with_deter(observations_extended, top_k=top_k)
+                            
+                            # Try 2 times steps memory
+                            observation_2steps = []
+                            for ii in range(0,len(observations), 2):
+                                # convert sequence of 2 observation (00/01/02/10/11/12/20/21/22)
+                                # to 1 digit representation (0,...,8)
+                                # using base 3
+                                observation_2steps.append(observations[ii]*3+observations[ii+1]) 
+                            observation_2steps_extended = np.zeros((len(observation_2steps)+1),).astype(np.int8)
+                            observation_2steps_extended[:len(observation_2steps)] = observation_2steps
+                            # path_trajs, path_probs, ml_prob, ml_traj = hmm_model_2steps.list_viterbi_algo_parallel_with_deter(observation_2steps_extended, top_k=top_k)
+                            path_trajs2, path_probs2, ml_prob2, ml_traj2 = hmm_model_2steps.list_viterbi_algo_parallel_with_deter_2steps(observation_2steps_extended, top_k=top_k)
+                            pass
+                            paths = np.zeros((path_trajs2.shape[0], (path_trajs2.shape[1]-1)*2))
+                            # parse the 2step representation to 1 step representation
+                            for ii in range(path_trajs2.shape[0]):
+                                paths[ii,:] = ge_model.parse_2step_to_1step(path_trajs2[ii,:-1])
+                            # remove dup rows
+                            unique_rows = np.unique(paths, axis=0)
+                            paths = unique_rows
+                            
+                            # prepare k-defective optional sets
+                            optional_sets_list = []
+                            for ii in range(paths.shape[0]):
+                                detected_defective_set = np.where(paths[ii]==1)[0]
+                                if N > 100 and len(detected_defective_set) >= N*0.9:
+                                    stop_viterbi_without_success = True
+                                    continue
+                                elif detected_defective_set.shape[0] >= K:
+                                    possible_k_combinations = prepare_nchoosek_comb(detected_defective_set.tolist(), K)
+                                    for comb in possible_k_combinations:
+                                        if not DD2 or len(list(set(DD2) - set(comb))) == 0: # the comc include all the DD2
+                                            optional_sets_list.append(list(comb))
+                            if optional_sets_list:
+                                possible_combination_found = True
+                            else:
+                                top_k += 20
+                                # if DD2:
+                                #     print('top_k += 20 || DD != []')
+                                # else:
+                                #     print('top_k += 20 || DD = []')
+                                
+                            if top_k > max_paths_for_lva or not DD2:
+                                stop_viterbi_without_success = True
+                                break
+                        
+                        num_of_true_set_options_in_step3 = scipy.special.comb(len(unknown2), K-len(DD2))
+                        # if could not found optional path using viterbi or found too many optional paths
+                        if stop_viterbi_without_success or len(optional_sets_list) > num_of_true_set_options_in_step3:
+                            # if we can just go over all the options - do it:
+                            if num_of_true_set_options_in_step3 <= max_iteration_for_map:
+                                # optional_sets_list = np.array(list(itertools.combinations(unknown2, count_not_detected_defectives)))
+                                # the output of viterbi is already sorted, its better to this list
+                                # of optional paths and cut it than generating the list again using itertool:
+                                optional_sets_list = optional_sets_list[:num_of_true_set_options_in_step3, :]
+                            else:
+                                # otherwise continue to the next scenario nn+1
+                                continue
+                        print('num_of_true_set_options_in_step3 = {} || len(optional_sets_list) = {}'.format(num_of_true_set_options_in_step3, len(optional_sets_list)))
 
-                    if third_step_type == 'MAP':
+                        optional_sets_ar = np.array(optional_sets_list, dtype=np.uint16)
+                        # # check if the true set in the array # TODO: FIX ME
+                        # for possible_set in optional_sets_ar:
+                        #     if len(DD2) > 0 and len(list(set(DD2) - set(possible_set))) != 0:
+                        #         print('{} DD2 not in path'.format(nn)) 
+
+                        # MAP
+                        apriori = invalid*np.ones((optional_sets_ar.shape[0],))
+                        # if len(optional_sets_ar) > 100:
+                        #     print('len(optional_sets_ar) = {} || len(DD2) = {}'.format(len(optional_sets_ar), len(DD2)))
+                        for comb_idx, comb in enumerate(optional_sets_ar):
+                            comb = comb.tolist()
+                            U_forW = np.zeros((1,N))
+                            U_forW[0,list(set(comb + DD2))] = 1
+                            
+                            X_forW = X*U_forW
+                            Y_forW = np.sum(X_forW, 1) > 0
+                            if (Y_forW != Y).any():
+                                if debug_mode and set(comb+DD2) == set(true_defective_set):
+                                    print('Yw!=Y')
+                                continue
+                            
+                            Pw_by_Xsw = 1e32
+                            
+                            for tt in range(T):
+                                participating_items = np.where(X_forW[tt,:] == 1)[0]
+                                if participating_items.shape[0] == 0:
+                                    continue
+
+                                probability_per_item = [ge_model.get_conditional_probability_GE(item, DD2, DND1) for item in participating_items]
+                                Pw_by_Xsw *= np.prod(probability_per_item)
+                                # Pw_by_Xsw *= np.sum(probability_per_item)
+                            
+                            apriori[comb_idx] = Pw_by_Xsw * p ** np.sum(X_forW == 1)                         
+                        max_likelihood_W = np.argmax(apriori)
+                        estU = np.zeros(U.shape)
+                        estU[0,optional_sets_ar[max_likelihood_W,:].tolist() + DD2] = 1
+                        # iter_until_detection_third_step_eff[idxK, idxT] += max_likelihood_W
+                        # Pw_of_true_out_of_max_Pw[idxK, idxT, nn] = Pw_sorted[max_likelihood_W] / Pw_sorted[0] 
+
+                    elif third_step_type == 'MAP':
                         if add_dd_based_prior: 
                             # 3.1 calculate new priors based on X(Y==1, PD1) (after DD)
                             Pu_DD2 = np.zeros((1, len(PD1)))
@@ -476,7 +573,7 @@ for typical_codes in use_typical_codes:
                                 if sample_method == 'ISI':
                                     if m==1:
                                         debug_correct_permute = np.where(U==1)[1]
-                                        # TODO: calculate Pu3 again. if item in DD2 so Pu3=1, and 
+                                        # calculate Pu3 again. if item in DD2 so Pu3=1, and 
                                         # 1. switch Pu = 1 for each item in DD2 
                                         # 2. Pu3(Uj) = Pu0 @ coeffmat
                                         all_permutations3, Pw_sorted = sort_comb_by_priors_ISI_m1(all_permutations3, Pu3, coeff_mat, DD2, debug_correct_permute)
@@ -535,7 +632,6 @@ for typical_codes in use_typical_codes:
                                 apriori[comb] *= Pw_sorted[comb] * p ** np.sum(X_forW == 1)
                             elif sample_method == 'GE':
                                 # calc P(w|Xsw) 
-                                # TODO: check why not using Pw_sorted?
                                 Pw_by_Xsw = 1e16
                                 for tt in range(T):
                                     participating_items = np.where(X_forW[tt,:] == 1)[0]
@@ -735,6 +831,7 @@ for typical_codes in use_typical_codes:
             permutations_label = '_perm_factor' + str(permutation_factor) + '_'
 
         if save_fig or save_raw:    
+            print('Save...')
             time_str = datetime.now().strftime("%d%m%Y_%H%M%S")
             experiment_str = 'N' + str(N) + '_nmc' + str(nmc) + '_methodDD_' + method_DD + permutations_label + '_thirdStep_' + third_step_label + typical_label + '_Tbaseline_' +  Tbaseline + '_'
             results_dir_path = os.path.join(save_path, 'countPDandDD_' + experiment_str + time_str)
@@ -770,6 +867,7 @@ for typical_codes in use_typical_codes:
                                     'save_workspace', 'load_workspace', 'rand_array_fixed_sum', 'split_list_into_2_sequence', \
                                     'sample_population_no_corr', 'sample_population_ISI', 'sample_population_ISI+m1', \
                                     'spread_infection_using_corr_mat', \
+                                    'hmm_model', 'hmm_model_2steps', \
                                     'calculatePu', 'calculatePw', 'test_sample_population_no_corr', 'test_sample_population_ISI', \
                                     'test_sample_population_ISI_m1', 'sample_population_indicative', 'sort_comb_by_priors', \
                                     'sort_comb_by_priors_ISI_m1' , \

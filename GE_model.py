@@ -2,6 +2,7 @@ import math
 import random
 import numpy as np
 from utils import *
+from HMM import HMM
 
 
 class GE_model:
@@ -11,7 +12,13 @@ class GE_model:
         self.pi_B = pi_B
         self.probabilities_to_bad_dict = self.calc_conditional_probability_GE() 
         self.num_of_permutations = None
-    
+
+    def calculate_num_of_permutations_by_entropy(self, K, T, nPD):
+        p = np.log(2) / K
+        prob_error_DD = 1-p*(1-p)**(nPD-1)
+        entropy_error_DD = -prob_error_DD * np.log2(prob_error_DD) - (1-prob_error_DD) * np.log2(1-prob_error_DD)
+        self.num_of_permutations = np.ceil(2 ** (T * entropy_error_DD)).astype(np.int64)
+
     def sample_gilbert_elliot_channel(self, N, max_bad=np.inf):
         # for GT with fixed num of K : if there are more than max_bad bad items, return false and don't complete the chain
 
@@ -138,10 +145,7 @@ class GE_model:
         Phidden = 1-P(there are no more PDs on) = 1-P( (#PD-1) items are off ) = 1-(1-p)^(#PD-1)
         '''
         if self.num_of_permutations is None:
-            p = np.log(2) / K
-            prob_error_DD = 1-p*(1-p)**(nPD-1)
-            entropy_error_DD = -prob_error_DD * np.log2(prob_error_DD) - (1-prob_error_DD) * np.log2(1-prob_error_DD)
-            self.num_of_permutations = np.ceil(2 ** (T * entropy_error_DD)).astype(np.int64)
+            self.calculate_num_of_permutations_by_entropy(K, T, nPD)
 
         # print('self.num_of_permutations', self.num_of_permutations)
         
@@ -223,3 +227,64 @@ class GE_model:
                 p_item_is_defective_given_previous = 1-self.get_conditional_probability_GE(jj, DD2, DND1)
             Pw *= p_item_is_defective_given_previous
         return Pw
+
+    def model_as_hmm(self, K, T, nPD, p):
+        states = np.array(['non_defective', 'defective'])
+        init_prob = np.array([1-self.pi_B, self.pi_B])
+        trans_mat = np.array([  [1-self.q, self.q], 
+                                [self.s, 1-self.s]  ])
+        P_PD_notDefective = (1-p*(1-p)**(K-1))**T # probability to be PD given its not defective (after DND algo)
+        P_PD_defective = (1-p*(1-p)**(nPD-1))**T # probability to be PD given its defective (after DD algo)
+        emit_mat = np.array([[1-P_PD_notDefective,   0,                  P_PD_notDefective], 
+                            [0,                      1-P_PD_defective,   P_PD_defective]])
+        hmm_model = HMM(states=states, init_prob=init_prob, trans_mat=trans_mat, emit_mat=emit_mat)
+        return hmm_model
+    
+    def model_as_hmm_with_2_steps_memory(self, K, T, nPD, p):
+        states = np.array(['non_defective | non_defective', 'non_defective | defective', 
+                            'defective | non_defective', 'defective | defective'])
+        init_prob_1step = np.array([1-self.pi_B, self.pi_B]) 
+        
+        
+        a = 1-self.q
+        b = self.q
+        c = self.s
+        d = 1-self.s
+        trans_mat_1step =   np.array([[1-self.q, self.q], 
+                                    [self.s, 1-self.s]])
+        trans_mat_2steps =  np.array([[a*a,  a*b,   b*c,    b*d],
+                                    [b*c,   c*d,   c*d,    d*d],
+                                    [a**2,  a*b,   b*c,    b*d],
+                                    [b*c,   c*d,   c*d,    d*d]])
+        init_prob_1step =   np.array([1-self.pi_B, self.pi_B])
+        init_prob_2steps =  np.array([init_prob_1step[0]*a, init_prob_1step[0]*b,
+                                        init_prob_1step[1]*c, init_prob_1step[1]*d])
+                                    
+        P_PD_notDefective = (1-p*(1-p)**(K-1))**T # probability to be PD given its not defective (after DND algo)
+        P_PD_defective = (1-p*(1-p)**(nPD-1))**T # probability to be PD given its defective (after DD algo)
+        emit_mat = np.array([[1-P_PD_notDefective,   0,                  P_PD_notDefective], 
+                            [0,                      1-P_PD_defective,   P_PD_defective]])
+        hmm_model = HMM(states=states, init_prob=init_prob_2steps, trans_mat=trans_mat_2steps,
+                        init_prob_1step=init_prob_1step, trans_mat_1step=trans_mat_1step, emit_mat=None)
+        return hmm_model
+
+    def parse_2step_to_1step(self, seq_2step):
+        n2 = seq_2step.shape[0]
+        n1 = int(n2*2)
+        seq_1step = np.zeros((n1,))
+        for ii in range(n2):
+            if seq_2step[ii] == 0:
+                seq_1step[ii*2] = 0
+                seq_1step[ii*2+1] = 0
+            elif seq_2step[ii] == 1:
+                seq_1step[ii*2] = 0
+                seq_1step[ii*2+1] = 1
+            elif seq_2step[ii] == 2:
+                seq_1step[ii*2] = 1
+                seq_1step[ii*2+1] = 0
+            elif seq_2step[ii] == 3:
+                seq_1step[ii*2] = 1
+                seq_1step[ii*2+1] = 1
+        return seq_1step
+    
+    # def parse_observation_2step_to
