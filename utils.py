@@ -1,7 +1,10 @@
+import os
 from math import perm
 import numpy as np
 from scipy.io import savemat, loadmat
 from itertools import combinations
+import bisect 
+import zipfile
 
 
 def rand_array_fixed_sum(n1,n2, fixed_sum):
@@ -43,6 +46,24 @@ def split_list_into_2_sequence(list, min_item, max_item):
 
 def compute_HammingDistance(X):
     return (X[:, None, :] != X).sum(2)
+
+dont_include_variables = ['np', 'scipy', 'scipy.io', 'numpy', 'pd', 'matplotlib', 'zipfile', \
+                        'time', 'tqdm', 'math', 'itertools', 'random', 'go', 'px', \
+                        'datetime', 'os', 'plt', 'shelve', 'reverse', 'bisect', \
+                        'plot_DD_vs_K_and_T', 'plot_expected_DD', 'plot_expected_PD', 'plot_expected_unknown', \
+                        'plot_expected_not_detected', 'plot_expected_unknown_avg', 'plot_Psuccess_vs_T', 'plot_and_save', \
+                        'save_workspace', 'load_workspace', 'rand_array_fixed_sum', 'split_list_into_2_sequence', \
+                        'sample_population_no_corr', 'sample_population_ISI', 'sample_population_ISI+m1', \
+                        'spread_infection_using_corr_mat', \
+                        'hmm_model', 'hmm_model_2steps', \
+                        'calculatePu', 'calculatePw', 'test_sample_population_no_corr', 'test_sample_population_ISI', \
+                        'test_sample_population_ISI_m1', 'sample_population_indicative', 'sort_comb_by_priors', \
+                        'sort_comb_by_priors_ISI_m1' , \
+                        'calculate_lower_bound_ISI_m1', 'calc_entropy_y_given_x_binary_RV', 'calc_entropy_binary_RV', \
+                        'test_calculate_lower_bound_ISI_m1', \
+                        'not_detected', 'ge_model', 'perm', 'combinations', 'permutations'\
+                        'num_of_false_positive_in_DD2', 'enlarge_tests_num_by_factors', 'count_add_success_third_step', 'count_not_detected_defectives', \
+                        '__builtins__', '__cached__', '__doc__', '__file__', '__loader__', '__name__', '__package__','__spec__', 'fig']
 
 def save_workspace(filename, names_of_spaces_to_save, dict_of_values_to_save):
     '''
@@ -99,6 +120,13 @@ def load_workspace(filename):
 # for key in var_dict.keys():
 #     globals()[key] = var_dict[key]
 
+def save_code_dir(output_path, code_dir_path=r'/Users/ayelet/Library/CloudStorage/OneDrive-Technion/Alejandro/code'):
+    files_names_list = ['coma_and_DD_and_map.py', 'GE_model.py', 'HMM.py', 'utils.py', 'plotters.py', 
+                        'calc_bounds_and_num_of_tests.py', 'sample_population.py']
+    with zipfile.ZipFile(os.path.join(output_path, 'code_dir.zip'), 'w') as zipMe:        
+        for file in files_names_list:
+            zipMe.write(os.path.join(code_dir_path, file), compress_type=zipfile.ZIP_DEFLATED)
+    
 def permutations(iterable, r=None):
     # permutations('ABCD', 2) --> AB AC AD BA BC BD CA CB CD DA DB DC
     # permutations(range(3)) --> 012 021 102 120 201 210
@@ -151,10 +179,20 @@ def my_combinations(iterable, r):
     return (3, 4)
 
 def add_new_value_and_symbol_keep_sort(values_arr, symbols_arr, value, symbol):
-    idx = values_arr.searchsorted(-value) # minus for descending order
+    # find the new idx:
+    if value > values_arr[0]:
+        idx = 0
+    else:
+        idx = values_arr.shape[0]-1
+        for ii in range(1,values_arr.shape[0]):
+            if value > values_arr[ii] and value <= values_arr[ii-1]:
+                idx = ii
+                break
+    # idx = values_arr.searchsorted(-value) # minus for descending order
     if idx < values_arr.shape[0]:
         values_arr = np.concatenate((values_arr[:idx], [value], values_arr[idx:-1]))
         symbols_arr = np.concatenate((symbols_arr[:idx], [symbol], symbols_arr[idx:-1]))
+    
     return values_arr, symbols_arr
 
 def prepare_nchoosek_comb(array, k):

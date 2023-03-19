@@ -355,7 +355,7 @@ class HMM:
                             prob = ml_prob[tt - 1, s2, k] # transition probability = 1 for DD&defecgive of DND and not defective
                         elif (obs[tt] == 1 and s1 == 0) or (obs[tt] == 0 and s1 == 1): # probability to be defective when observed DND = 0 
                             prob = 0
-                        else:
+                        else: # prob to be defective/non defective when observed unknown obs==2 
                             prob = ml_prob[tt - 1, s2, k] * self.trans_mat[s2, s1]# * self.emit_mat[s1, obs[t]]
                         prev_state = s2
                         # Push the probability and state that led to it

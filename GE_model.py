@@ -68,7 +68,7 @@ class GE_model:
         probabilities_to_bad_dict['no_prior_given'] = self.pi_B# * (1-self.s) + (1-self.pi_B) * self.q
         return probabilities_to_bad_dict
 
-    def get_conditional_probability_GE(self, item, DD2, DND1):
+    def get_conditional_probability_GE_old_didnot_work(self, item, DD2, DND1):
         if item-1 in DD2:
             # given previous item is defective
             return self.probabilities_to_bad_dict['previous_is_defective']
@@ -82,6 +82,25 @@ class GE_model:
             else:
                 return self.probabilities_to_bad_dict['no_prior_given']
 
+    def get_conditional_probability_GE(self, item, DD2, DND1):
+        if item in DD2:
+            return 1
+        
+        elif item in DND1:
+            return 0
+        
+        else: # status is unknown
+            if item == 0 or ( item > 0 and item-1 not in DD2 and item-1 not in DND1 ): # no prior 
+                return self.probabilities_to_bad_dict['no_prior_given']
+
+            elif item-1 in DD2:
+                return self.probabilities_to_bad_dict['previous_is_defective']
+            
+            elif item-1 in DND1:
+                    return self.probabilities_to_bad_dict['previous_is_not_defective']
+            
+        return None
+    
     def calculate_lower_bound_GE(self, N, Pe=0.0):
         return self.calculate_entropy(N) * (1-Pe)
     
@@ -156,11 +175,11 @@ class GE_model:
         # else:
         #     save_permutations = np.min([self.num_of_permutations, num_of_permutations_binomial])
         if num_of_permutations_binomial > self.num_of_permutations:
-            save_permutations = permutation_factor*self.num_of_permutations
+            num_permutations_to_save = permutation_factor*self.num_of_permutations
         else:
-            save_permutations = self.num_of_permutations
-        Pw = np.zeros((save_permutations,))
-        high_prob_permutations = np.zeros((save_permutations, K_left))
+            num_permutations_to_save = num_of_permutations_binomial#self.num_of_permutations
+        Pw = np.zeros((num_permutations_to_save,))
+        high_prob_permutations = np.zeros((num_permutations_to_save, K_left))
         num_of_iterations_in_sort = num_of_permutations_binomial
         # if num_of_permutations_binomial < self.num_of_permutations:
         #     # built the iterator on all the possible options and sort
@@ -211,22 +230,37 @@ class GE_model:
         return Pw
 
     def calc_Pw_fixed(self, N, permute, DD2, DND1):  # take in account all n items
-        # probability of the first item in the permutation:
-        first_item = 0
-        if first_item in DD2:
-            Pw = 1
-        elif first_item in DND1:
-            Pw = 0
-        else:
-            Pw = self.pi_B
-        # multiply transition probabilities
-        for jj in range(1,N):
-            if jj in permute:
-                p_item_is_defective_given_previous = self.get_conditional_probability_GE(jj, DD2, DND1)
+        permute = list(permute) + DD2
+        probability_per_item = np.zeros((N,))
+        for item in range(N):
+            if item in permute:
+                probability_per_item[item] = self.get_conditional_probability_GE(item, DD2, DND1)
             else:
-                p_item_is_defective_given_previous = 1-self.get_conditional_probability_GE(jj, DD2, DND1)
-            Pw *= p_item_is_defective_given_previous
+                probability_per_item[item] = 1 - self.get_conditional_probability_GE(item, DD2, DND1)
+        Pw = np.prod(probability_per_item)
         return Pw
+        # # probability of the first item in the permutation:
+        # first_item = 0
+        # # if 0 in permute:
+        # if first_item in DD2:
+        #     Pw = 1
+        # elif first_item in DND1:
+        #     Pw = 0
+        # else:
+        #     Pw = self.pi_B
+        # if 0 not in permute:
+        #     Pw = 1-Pw
+
+        # if Pw ==0: 
+        #     return Pw
+        # # multiply transition probabilities
+        # for jj in range(1,N):
+        #     if jj in permute:
+        #         p_item_is_defective_given_previous = self.get_conditional_probability_GE(jj, DD2, DND1)
+        #     else:
+        #         p_item_is_defective_given_previous = 1-self.get_conditional_probability_GE(jj, DD2, DND1)
+        #     Pw *= p_item_is_defective_given_previous
+        # return Pw
 
     def model_as_hmm(self, K, T, nPD, p):
         states = np.array(['non_defective', 'defective'])
