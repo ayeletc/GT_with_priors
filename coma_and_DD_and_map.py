@@ -12,6 +12,7 @@ from plotters import *
 from calc_bounds_and_num_of_tests import *
 import scipy.io
 
+
 #%% Count #possiblyDefected after CoMa and DD
 # 1.
 # 1.1. CoMa with T=Tml
@@ -32,33 +33,40 @@ vecK                = [3]#[10]#[2, 3, 4, 5, 6]
 sample_method       = 'GE'  # options: 'ISI', 'onlyPu', 'indicative'
 isi_type            = 'asymmetric'
 m                   = 1
-nmc                 = 1000
-save_raw            = True
-save_fig            = True
+nmc                 = 100
+save_raw            = False
+save_fig            = False
 save_path           = r'/Users/ayelet/Library/CloudStorage/OneDrive-Technion/Alejandro/count_possibly_defected_results/shelve_raw/'
 is_plot             = True
 do_third_step       = True
 is_sort_comb_by_priors = True
 add_dd_based_prior  = False
-orig_prior_weight   = 0.5
 use_typical_codes   = [True] # options: True,False
 # ones_zeros_ratio_th = 0.07
 # delta_typical_cols  = 0.02#0.025 # for N=500,K=10 and T=0.75ML it allows a difference of 2-3 elements in column
 # delta_typical_rows  = 0.03
 delta_typical_cols  = 0.1# for N=100,K=3 and T=0.75ML 
 delta_typical_rows  = 0.1
-enlarge_tests_num_by_factors = [0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1, 1.1, 1.2] #[0.25, 0.5, 0.75, 1, 1.25] #[0.5, 0.25, 0.5, 0.75, 1, 1.5]#[0.75, 0.8, 0.9, 1, 1.25, 1.5, 1.75, 2]# [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.3, 1.7, 2] #[0.85, 0.9, 0.95, 1, 1.25, 1.5, 1.75, 2]#
+enlarge_tests_num_by_factors = [0.4, 0.6, 0.8, 1, 1.2]#[0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1, 1.1, 1.2] #[0.25, 0.5, 0.75, 1, 1.25] #[0.5, 0.25, 0.5, 0.75, 1, 1.5]#[0.75, 0.8, 0.9, 1, 1.25, 1.5, 1.75, 2]# [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.3, 1.7, 2] #[0.85, 0.9, 0.95, 1, 1.25, 1.5, 1.75, 2]#
 Tbaseline           = 'ML' # options: 'ML', 'lb_no_priors', 'lb_with_priors', 'GE'
 methods_DD          = ['Normal']#{'Normal', 'Sum'} # options: Normal, Iterative, Sum
 calc_Pu             = 1
 third_step_type     = 'viterbi+MAP' # options: ['MAP', 'MLE', 'MAP_for_GE_all_options', 'MAP_for_GE_stop_search', 'MAP_for_GE_use_sortedPw', 'viterbi', 'viterbi+MAP']
-max_paths_for_lva   = 60 # TODO
 calc_Pw             = 1
 permutation_factor  = 50 # compared [10, 20 , 50, 100] for N=100, K=2,4,6. 50 was the most effective
 debug_mode          = False 
-check_hamming_dist  = True # count and plot probability of success vs hamming distance in the testing matrix
+check_hamming_dist  = False # count and plot probability of success vs hamming distance in the testing matrix
 plot_status_DD      = False
+### viterbi config ###
+extend_obsesrvations = True # with 1 step there is not much difference between true/false here, if true fix the paths(cut the last item in the traj_paths)
+do_map_if_viterbi_fail = True
+init_paths_number   = 100 # initial number of paths to find in list viterbi algorithm (in the 1st iiteration)
+max_paths_for_lva   = 100 # TODO: try 40 and 60 (already done 80)
+step_in_lva_paths   = 100
+viterbi_time_steps  = 2
 max_iteration_for_map = 1e6
+viterbi_comb_threshold = 100
+### seed ###
 random.seed(123)
 np.random.seed(123)
 invalid = -1
@@ -67,8 +75,12 @@ vecTs = []
 for typical_codes in use_typical_codes:
     for method_DD in methods_DD:
         print('===== DD method: {} || typical_codes = {} ====='.format(method_DD, typical_codes))
+        if third_step_type == 'viterbi+MAP':
+            print('===== max paths in lva = {}  <=>  max lva iterations = {} ====='.format(max_paths_for_lva, int((max_paths_for_lva-init_paths_number)/step_in_lva_paths)+1))
+            print('===== viterbi time steps = {} ====='.format(viterbi_time_steps))
         ## Initialize counters
         numOfK = len(vecK)
+        viterbi_fail_try_full_map = False
         num_of_test_scale = len(enlarge_tests_num_by_factors)
         count_DND1 = np.zeros((numOfK, num_of_test_scale, nmc))
         count_PD1 = np.zeros((numOfK, num_of_test_scale, nmc))
@@ -79,10 +91,10 @@ for typical_codes in use_typical_codes:
         # count_unknown2_verif = np.zeros((numOfK, num_of_test_scale))
         count_success_DD_exact = np.zeros((numOfK, num_of_test_scale, nmc))
         count_success_DD_non_exact = np.zeros((numOfK, num_of_test_scale, nmc))
-        count_add_success_third_step = np.zeros((numOfK, num_of_test_scale, nmc))
+        count_success_exact_third_step = np.zeros((numOfK, num_of_test_scale, nmc))
         count_success_non_exact_third_step = np.zeros((numOfK, num_of_test_scale, nmc))
         count_not_detected = np.zeros((numOfK, num_of_test_scale))
-        # count_not_detected_no_valid_option = np.zeros((numOfK, num_of_test_scale, nmc))
+        count_not_detected_no_valid_option = np.zeros((numOfK, num_of_test_scale, nmc))
         # count_not_detected_map_error = np.zeros((numOfK, num_of_test_scale, nmc))
         count_viterbi_error_code = np.zeros((numOfK, num_of_test_scale, nmc))
         expected_notDetected = np.zeros((numOfK, num_of_test_scale))
@@ -96,6 +108,10 @@ for typical_codes in use_typical_codes:
         count_num_of_paths_in_viterbi = -1*np.ones((numOfK, num_of_test_scale, nmc))
         count_num_of_paths_in_viterbi_2steps = -1*np.ones((numOfK, num_of_test_scale, nmc))
         count_num_of_unique_comb_in_viterbi = -1*np.ones((numOfK, num_of_test_scale, nmc))
+        count_viterbi_found_zero_options = np.zeros((numOfK, num_of_test_scale))
+        count_viterbi_fail_try_full_map = np.zeros((numOfK, num_of_test_scale))
+        count_viterbi_fail_and_full_map_fail = np.zeros((numOfK, num_of_test_scale))
+        count_viterbi_fail_cant_try_map = np.zeros((numOfK, num_of_test_scale))
         queries_per_third_step_iter = 0
         Pw_of_true_out_of_max_Pw = np.zeros((numOfK, num_of_test_scale, nmc))
         correct_Pw = np.zeros((numOfK, num_of_test_scale, nmc))
@@ -103,6 +119,7 @@ for typical_codes in use_typical_codes:
         if check_hamming_dist:
             hamming_dist_avg_vec = np.zeros((numOfK, num_of_test_scale, nmc))
             hamming_dist_min_vec = np.zeros((numOfK, num_of_test_scale, nmc))
+        
         
         #%% Start simulation
         for idxK in range(numOfK):
@@ -141,6 +158,7 @@ for typical_codes in use_typical_codes:
                     sum_col_in_X_max_nn = np.zeros((nmc,))
                     list_good_X_occluded = []
                     list_bad_X_occluded = []
+                
                 for nn in tqdm(range(nmc), desc='T ' + str(T)):
                 # for nn in range(nmc):
                     # print('nn', nn)
@@ -199,6 +217,9 @@ for typical_codes in use_typical_codes:
                         sum_X_nn[nn] = np.sum(X)
                         sum_col_in_X_max_nn[nn] = np.mean(np.sum(X,axis=0))
                     
+                    # if nn not in [14, 15]:
+                    #     continue
+
                     # Decoder - CoMa
                     PD1 = np.arange(N)
                     DND1 = []
@@ -216,6 +237,7 @@ for typical_codes in use_typical_codes:
                     if check_hamming_dist:
                             count_PD_nn[nn] = len(PD1)
                     if len(PD1) <= K: # all the PD are DD - all defective found
+                        # TODO: yul I think its ok but maybe I should check it in case the code gets here
                         count_DD2[idxK, idxT, nn] = len(PD1)
                         count_success_DD_exact[idxK, idxT, nn] += 1
                         if check_hamming_dist:
@@ -255,92 +277,26 @@ for typical_codes in use_typical_codes:
                                 count_unknowns_nn[nn] = 0
                             count_success_DD_non_exact[idxK, idxT, nn] +=1
                             continue
+                        
+                    count_not_detected_defectives = K-len(DD2)
+                    count_success_DD_non_exact[idxK, idxT, nn] += (len(DD2) / K)
+                    unknown2 = [e for e in PD1 if e not in DD2]#PD1[PD1 not in DD2][0]
+
+                    count_unknown2[idxK, idxT, nn] = len(unknown2)
+
+                    if check_hamming_dist:
+                        count_success_DD_non_exact_vec_nmc[nn] = (len(DD2) / K)
                         num_of_false_positive_in_DD2 = [e for e in DD2 if e not in true_defective_set]
                         if num_of_false_positive_in_DD2:
                             print('Something wrong with the DD - not defective detected')
                             pass
-                    ## 2. TRY iterative Definite Defective - currently there is a bug:
-
-                    # I need to see in my notes what we said about participating
-                    # item and sum=1
-                    # steps 1&2
-                    elif method_DD == 'Iterative':
-                        DD2 = []
-                        try_again_DD = True
-                        while try_again_DD:
-                            try_again_DD = False
-                            for tt in range(T):
-                                if Y[tt] == 0:
-                                    continue
-                                # calculate sum over not DD
-                                count_participant_who_are_not_DD = 0
-                                participants = np.where(X[tt,PD1] == 1)[0] # the indices of the PD that participate int the ii test
-                                                                    # the corresponding index in X = PD1(participants)
-                                participants_who_are_not_DD = [e for e in PD1[participants] if e not in DD2]
-                                count_participant_who_are_not_DD = len(participants_who_are_not_DD)
-                                if count_participant_who_are_not_DD == 1: #&& participants_who_are_not_DD # only 1 item among the PD (who have not already been detected as DD) equals 1 and the rest equal 0
-                                    defective = participants(participants_who_are_not_DD) # index of the defective in X (index between 1 to N)
-                                    if defective not in DD2: # add jj only if jj is not already detected as DD
-                                        DD2 += [defective]
-                                        try_again_DD = True
-                                    
-                        count_DD2[idxK, idxT, nn] = len(DD2)
-                        if len(DD2) >= K: # all defective found
-        #                     fprintf('All defective found\n')
-                            count_success_DD_exact[idxK, idxT, nn] += 1
-                            if check_hamming_dist:
-                                count_success_DD_exact_vec_nmc[nn] = 1
-                                count_success_DD_non_exact_vec_nmc[nn] = 1
-                                count_DD_nn[nn] = len(DD2)
-                                count_unknowns_nn[nn] = 0
-                            count_success_DD_non_exact[idxK, idxT, nn] += 1
-                            continue 
-                    ##
-                    elif method_DD == 'Sum':
-                        Y_sum = np.sum(tested_mat, 1) # keep the levels
-                        iter = 0
-                        helpful_iter = []
-                        DD2 = []
-                        DD_rows = []
-                        try_again_DD = True
-                        while try_again_DD:
-                            try_again_DD = 0
-                            iter = iter + 1
-                            for tt in range(T):
-                                if Y[tt] == 0 or tt in DD_rows:# skip rows that based on them we detected DD
-                                    continue
-                                count_participant_who_are_not_DD = 0
-                                participants = np.where(X[tt,PD1] == 1)[0] # the indices of the PD that participate int the ii test
-                                                                    # the corresponding index in X = PD1(participants)
-                                participants_who_are_not_DD = [e for e in PD1[participants] if e not in DD2]
-                                count_participant_who_are_not_DD = len(participants_who_are_not_DD)
-                                participants_who_are_DD = [e for e in PD1[participants] if e in DD2]
-                                count_participant_who_are_DD = len(participants_who_are_DD)
-                                if count_participant_who_are_not_DD == 1 and Y_sum[tt]-count_participant_who_are_DD == 1: #&& participants_who_are_not_DD # only 1 item among the PD (who have not already been detected as DD) equals 1 and the rest equal 0
-                                    defective = participants_who_are_not_DD[0]#index of the defective in X (index between 1 to N)
-                                    if defective not in DD2: # add jj only if jj is not already detected as DD
-                                        DD2 += [defective]
-                                        DD_rows += [tt]
-                                        try_again_DD = True
-                                        helpful_iter += [iter]
-                                    
-                        count_DD2[idxK, idxT, nn] = len(DD2)
-                        
-                        if len(DD2) >= K: # all defective found
-                            count_success_DD_exact[idxK, idxT, nn] += 1
-                            if check_hamming_dist: 
-                                count_success_DD_exact_vec_nmc[nn] = 1
-                                count_success_DD_non_exact_vec_nmc[nn] = 1
-                                count_DD_nn[nn] = len(DD2)
-                                count_unknowns_nn[nn] = 0
-                            count_success_DD_non_exact[idxK, idxT, nn] += 1
-                            continue 
         
                     # find all unknown
-                    unknown2 = [e for e in PD1 if e not in DD2]#PD1[PD1 not in DD2][0]
+                    # if N < 1024:
+                        # unknown2 = [np.int16(e) for e in PD1 if e not in DD2]#PD1[PD1 not in DD2][0]
+                    # else:
+                    #     unknown2 = [np.int64(e) for e in PD1 if e not in DD2]
                     
-                    count_unknown2[idxK, idxT, nn] = len(unknown2)
-
                     if check_hamming_dist:
                         count_DD_nn[nn] = len(DD2)
                         count_unknowns_nn[nn] = len(unknown2)
@@ -363,10 +319,7 @@ for typical_codes in use_typical_codes:
                     # print('#PD = {} || #DD = {} || #unknown = {}'.format(len(PD1), len(DD2), len(unknown2)))
                     # print('hamming_dist_min', hamming_dist_min)
                     # count_unknown2_verif[idxK, idxT] += len(PD1) - len(DD2)
-                    count_not_detected_defectives = K-len(DD2)
-                    count_success_DD_non_exact[idxK, idxT, nn] += (len(DD2) / K)
-                    if check_hamming_dist:
-                        count_success_DD_non_exact_vec_nmc[nn] = (len(DD2) / K)
+                    
                         # X_mark = mark_hidden_in_DD(X, save_path=r'/Users/ayelet/Library/CloudStorage/OneDrive-Technion/Alejandro/temp_res/')
                     ## 3.
                     if is_plot and plot_status_DD:
@@ -382,6 +335,20 @@ for typical_codes in use_typical_codes:
                         continue
                     estU = np.zeros(U.shape)
                     if third_step_type == 'viterbi':
+
+                        # # DO it this way:
+                        # # Try 1 step memory
+                        # observations_extended = np.zeros((observations.shape[0]+1,)).astype(np.int8)
+                        # observations_extended[:observations.shape[0]] = observations
+                        # path_trajs, path_probs, ml_prob, ml_traj = hmm_model.list_viterbi_algo_parallel_with_deter(observations_extended, top_k=1)
+                        # # remove dup rows
+                        # unique_rows = np.unique(path_trajs, axis=0)
+                        # if unique_rows.shape[0] != path_trajs.shape[0]:
+                        #     print('check')
+                            
+                        # paths = unique_rows
+                        
+                        # # Do it the other way:
                         map_trajectory, map_probabilities = hmm_model.viterbi_algo_adjusted_to_GE(observations)
                         
                         map_trajectory = np.array(map_trajectory)
@@ -389,142 +356,64 @@ for typical_codes in use_typical_codes:
                         # senity check - is DD2 in the most likely path?
                         if len(DD2) > 0 and len(list(set(DD2) - set(np.where(map_trajectory == 1)[0]))) != 0:
                             print('{} DD2 not in path'.format(nn)) 
-                        
+
+                        # if np.sum(paths != map_trajectory):
+                        #     print('stop')
+                        #     pass
+
                     elif third_step_type == 'viterbi+MAP':
-                        '''
-                        possible_combination_found = False
-                        stop_viterbi_without_success = False
-                        top_k = 20
-                        while not possible_combination_found:
-                            # # Try 1 step memory
-                            # observations_extended = np.zeros((observations.shape[0]+1,)).astype(np.int8)
-                            # observations_extended[:observations.shape[0]] = observations
-                            # path_trajs, path_probs, ml_prob, ml_traj = hmm_model.list_viterbi_algo_parallel_with_deter(observations_extended, top_k=top_k)
-                            # # remove dup rows
-                            # unique_rows = np.unique(path_trajs, axis=0)
-                            # if unique_rows.shape[0] != path_trajs.shape[0]:
-                            #     print('check')
-                                
-                            # paths = unique_rows
-                            # count_num_of_paths_in_viterbi[idxK, idxT, nn] = paths.shape[0]
-
-                            # Try 2 time steps memory
-                            observation_2steps = []
-                            for ii in range(0,len(observations), 2):
-                                # convert sequence of 2 observation (00/01/02/10/11/12/20/21/22)
-                                # to 1 digit representation (0,...,8)
-                                # using base 3
-                                observation_2steps.append(observations[ii]*3+observations[ii+1]) 
-                            observation_2steps_extended = np.zeros((len(observation_2steps)+1),).astype(np.int8)
-                            observation_2steps_extended[:len(observation_2steps)] = observation_2steps
-                            path_trajs2, path_probs2, ml_prob2, ml_traj2 = hmm_model_2steps.list_viterbi_algo_parallel_with_deter_2steps(observation_2steps_extended, top_k=top_k)
-                            
-                            paths = np.zeros((path_trajs2.shape[0], (path_trajs2.shape[1]-1)*2))
-                            # parse the 2step representation to 1 step representation
-                            for ii in range(path_trajs2.shape[0]):
-                                paths[ii,:] = ge_model.parse_2step_to_1step(path_trajs2[ii,:-1])
-                            # remove dup rows
-                            unique_rows = np.unique(paths, axis=0)
-                            if debug_mode and unique_rows.shape[0] != paths.shape[0]:
-                                print('check')
-                            paths = unique_rows
-
-                            count_num_of_paths_in_viterbi_2steps[idxK, idxT, nn] = paths.shape[0]
-                            # prepare k-defective optional sets
-                            optional_sets_list = []
-                            for ii in range(paths.shape[0]):
-                                detected_defective_set = np.where(paths[ii]==1)[0]
-                                if N > 100 and len(detected_defective_set) >= N*0.9:
-                                    # too many potential combinations, skip this option
-                                    # TODO: maybe already here we need the itertools&MAP?
-                                    # stop_viterbi_without_success = True  # yul - it results stop_viterbi_without_success=true when there are also good paths from viterbi
-                                    continue
-                             
-                                elif detected_defective_set.shape[0] >= K:
-                                    possible_k_combinations = prepare_nchoosek_comb(detected_defective_set.tolist(), K)
-                                    for comb in possible_k_combinations:
-                                        list_of_false_positive_items = [item for item in detected_defective_set if (item not in unknown2) and (item not in DD2)]
-                                        if (not DD2 or len(list(set(DD2) - set(comb))) == 0) and not list_of_false_positive_items: # the comc include all the DD2 and does not include dnd1
-                                            optional_sets_list.append(list(comb))
-                            if optional_sets_list:
-                                possible_combination_found = True
-                            else:
-                                top_k += 20
-                            
-                            if not possible_combination_found and (top_k > max_paths_for_lva):# or not DD2):
-                                stop_viterbi_without_success = True
-                                if debug_mode:
-                                    print('all path have less than K defectives')
-                                break
-                            else: # keep only unique combinations
-                                optional_sets_ar = np.array(optional_sets_list)
-                                optional_sets_list = np.unique(optional_sets_ar, axis=0).tolist()
-                        
-                        count_num_of_unique_comb_in_viterbi[idxK, idxT, nn] = len(optional_sets_list)
-                        # Verify that the set of possible combinations found is not too big
-                        num_of_true_set_options_in_step3 = int(scipy.special.comb(len(unknown2), K-len(DD2)))
-                        # if could not found optional path using viterbi 
-                        if stop_viterbi_without_success:
-                            # count_not_detected_no_valid_option[idxK, idxT, nn] += 1
-                            count_viterbi_error_code[idxK, idxT, nn] = 
-                            if num_of_true_set_options_in_step3 <= max_iteration_for_map:
-                                # if we expected viterbi to find too many options and skipped it => try MAP:
-                                optional_sets_list = np.array(list(itertools.combinations(unknown2, count_not_detected_defectives)))
-                            else: # complexity is too high 
-                                
-                                continue
-                        
-                        # if found too many optional combinations in viterbi paths
-                        if len(optional_sets_list) > num_of_true_set_options_in_step3:
-                            # if we can just go over all the options - do it:
-                            if num_of_true_set_options_in_step3 <= max_iteration_for_map:
-                            # if stop_viterbi_without_success or len(optional_sets_list) > num_of_true_set_options_in_step3:
-
-                                # optional_sets_list = np.array(list(itertools.combinations(unknown2, count_not_detected_defectives)))
-                                # the output of viterbi is already sorted, its better to this list
-                                # of optional paths and cut it than generating the list again using itertool:
-                                optional_sets_list = optional_sets_list[:num_of_true_set_options_in_step3]
-                                # TODO: add option to return to normal map here, with itertools
-                            else:
-                                # otherwise continue to the next scenario nn+1
-                                continue
-                        if debug_mode:
-                            print('num_of_true_set_options_in_step3 = {} || len(optional_sets_list) = {}'.format(num_of_true_set_options_in_step3, len(optional_sets_list)))
-                        '''
-
                         possible_combination_found = False
                         skip_viterbi_paths_options = False
                         
-                        top_k = 20
+                        top_k = init_paths_number
                         while not possible_combination_found and top_k <= max_paths_for_lva:
-                            # Try 2 time steps memory
-                            observation_2steps = []
-                            for ii in range(0,len(observations), 2):
-                                # convert sequence of 2 observation (00/01/02/10/11/12/20/21/22)
-                                # to 1 digit representation (0,...,8)
-                                # using base 3
-                                observation_2steps.append(observations[ii]*3+observations[ii+1]) 
-                            observation_2steps_extended = np.zeros((len(observation_2steps)+1),).astype(np.int8)
-                            observation_2steps_extended[:len(observation_2steps)] = observation_2steps
-                            path_trajs2, path_probs2, ml_prob2, ml_traj2 = hmm_model_2steps.list_viterbi_algo_parallel_with_deter_2steps(observation_2steps_extended, top_k=top_k)
-                            
-                            paths = np.zeros((path_trajs2.shape[0], (path_trajs2.shape[1]-1)*2))
-                            # parse the 2step representation to 1 step representation
-                            for ii in range(path_trajs2.shape[0]):
-                                paths[ii,:] = ge_model.parse_2step_to_1step(path_trajs2[ii,:-1])
-                            # remove dup rows
-                            unique_rows = np.unique(paths, axis=0)
-                            if debug_mode and unique_rows.shape[0] != paths.shape[0]:
-                                print('check')
-                            paths = unique_rows
+                            if viterbi_time_steps == 1:
+                                # Try 1 step memory
+                                if extend_obsesrvations:
+                                    observations_extended = np.zeros((observations.shape[0]+1,)).astype(np.int8)
+                                    observations_extended[:observations.shape[0]] = observations
+                                    path_trajs, path_probs, ml_prob, ml_traj = hmm_model.list_viterbi_algo_parallel_with_deter(observations_extended, top_k=top_k)
+                                else:
+                                    path_trajs, path_probs, ml_prob, ml_traj = hmm_model.list_viterbi_algo_parallel_with_deter(observations, top_k=top_k)
+                                # remove dup rows
+                                unique_rows = np.unique(path_trajs, axis=0)
+                                if unique_rows.shape[0] != path_trajs.shape[0]:
+                                    # print('check')
+                                    pass
+                                    
+                                paths = unique_rows
+                                count_num_of_paths_in_viterbi[idxK, idxT, nn] = paths.shape[0]
+                            elif viterbi_time_steps == 2:
+                                # Try 2 time steps memory
+                                observation_2steps = []
+                                for ii in range(0,len(observations), 2):
+                                    # convert sequence of 2 observation (00/01/02/10/11/12/20/21/22)
+                                    # to 1 digit representation (0,...,8)
+                                    # using base 3
+                                    observation_2steps.append(observations[ii]*3+observations[ii+1]) 
+                                if extend_obsesrvations:
+                                    observation_2steps_extended = np.zeros((len(observation_2steps)+1),).astype(np.int8)
+                                    observation_2steps_extended[:len(observation_2steps)] = observation_2steps
+                                    path_trajs2, path_probs2, ml_prob2, ml_traj2 = hmm_model_2steps.list_viterbi_algo_parallel_with_deter_2steps(observation_2steps_extended, top_k=top_k)
+                                else:
+                                    path_trajs2, path_probs2, ml_prob2, ml_traj2 = hmm_model_2steps.list_viterbi_algo_parallel_with_deter_2steps(observation_2steps, top_k=top_k)
+                                paths = np.zeros((path_trajs2.shape[0], (path_trajs2.shape[1]-1)*2))
+                                # parse the 2step representation to 1 step representation
+                                for ii in range(path_trajs2.shape[0]):
+                                    paths[ii,:] = ge_model.parse_2step_to_1step(path_trajs2[ii,:-1]) # maybe I can do better than that using mapping/np.vectorize?
+                                # remove dup rows
+                                unique_rows = np.unique(paths, axis=0)
+                                if debug_mode and unique_rows.shape[0] != paths.shape[0]:
+                                    print('check')
+                                paths = unique_rows
 
-                            count_num_of_paths_in_viterbi_2steps[idxK, idxT, nn] = paths.shape[0]
+                                count_num_of_paths_in_viterbi_2steps[idxK, idxT, nn] = paths.shape[0]
 
                             # prepare k-defective optional sets
                             optional_sets_list = []
                             for ii in range(paths.shape[0]):
                                 detected_defective_set = np.where(paths[ii]==1)[0]
-                                if detected_defective_set.shape[0] >= N*0.9:
+                                if detected_defective_set.shape[0] >= viterbi_comb_threshold:#N*0.9:
                                     # Too many potential combinations, skip the viterbi option
                                     skip_viterbi_paths_options = True
                                     # TODO: maybe already here we need the itertools&MAP?
@@ -543,26 +432,40 @@ for typical_codes in use_typical_codes:
                             if optional_sets_list: 
                                 possible_combination_found = True
                             else:
-                                top_k += 20
-                            
+                                top_k += step_in_lva_paths
+                        
+                        
                         if possible_combination_found:
                             # keep only unique combinations, remove dups
                             optional_sets_ar = np.array(optional_sets_list)
-                            optional_sets_list = np.unique(optional_sets_ar, axis=0).tolist()
+                            optional_sets_ar = np.unique(optional_sets_ar, axis=0).astype(np.uint16)#.tolist()
+                            viterbi_fail_try_full_map = False 
                         
                         elif top_k > max_paths_for_lva:
                             # didn't find valid options using viterbi
                             # check if going over all the options is possible:
+                            count_viterbi_found_zero_options[idxK, idxT] += 1 
                             num_of_true_set_options_in_step3 = int(scipy.special.comb(len(unknown2), K-len(DD2)))
-                            if num_of_true_set_options_in_step3 <= max_iteration_for_map:
-                                optional_sets_list = np.array(list(itertools.combinations(unknown2, count_not_detected_defectives)))
+                            viterbi_fail_try_full_map = False # initialization
+                            if do_map_if_viterbi_fail and num_of_true_set_options_in_step3 <= max_iteration_for_map:
+                                optional_sets_ar = np.fromiter(itertools.chain(*itertools.combinations(unknown2, count_not_detected_defectives)), np.uint16).reshape((-1,count_not_detected_defectives))
+                                # optional_sets_list = np.array(list(itertools.combinations(unknown2, count_not_detected_defectives)))
+                                # print('do map, {} combinations'.format(num_of_true_set_options_in_step3))
+                                count_viterbi_fail_try_full_map[idxK, idxT] += 1 
+                                viterbi_fail_try_full_map = True
                             else:
+                                count_viterbi_fail_cant_try_map[idxK, idxT] += 1  # too many options
                                 continue
+                        else:
+                            print('here')
+                            pass
                             
-                        optional_sets_ar = np.array(optional_sets_list, dtype=np.uint16)
+                        # optional_sets_ar = np.array(optional_sets_list, dtype=np.uint16)
                         # MAP
+                        ## 1st option - iterative MAP:
                         apriori = invalid*np.ones((optional_sets_ar.shape[0],))
-                        for comb_idx, comb in enumerate(optional_sets_ar):
+                        # t_iter_map = time.time()
+                        for comb_idx, comb in enumerate(optional_sets_ar): # TODO: yul maybe I can use here vectorize?
                             comb = comb.tolist()
                             U_forW = np.zeros((1,N))
                             U_forW[0,list(set(comb + DD2))] = 1
@@ -577,12 +480,20 @@ for typical_codes in use_typical_codes:
                             # Pw_vietrbi = TODO:get the path probability and compare to the map's
                             P_X_Sw = p ** np.sum(X_forW == 1)
                             apriori[comb_idx] = Pw_map * P_X_Sw
+                        # elapsed_iter_map = time.time() - t_iter_map
+                        # print('elapsed time in iterative MAP: {} [sec]'.format(elapsed_iter_map))
+                        
+                        # ## 2nd option - vectorized:
+                        # t_vec_map = time.time()
+                        # vec_map = np.vectorize(single_map, excluded=('N', 'DND1', 'DD2', 'X', 'Y', 'p', 'ge_model'))
+                        # apriori_vec = vec_map(optional_sets_ar, N, DND1, DD2, X, Y, p, ge_model)
+                        # elapsed_vec_map = time.time() - t_vec_map
+                        # print('elapsed time in vectorized MAP: {} [sec]'.format(elapsed_vec_map))
+                        
                         max_likelihood_W = np.argmax(apriori)
                         estU = np.zeros(U.shape)
                         estU[0,optional_sets_ar[max_likelihood_W,:].tolist() + DD2] = 1
-                        # iter_until_detection_third_step_eff[idxK, idxT] += max_likelihood_W
-                        # Pw_of_true_out_of_max_Pw[idxK, idxT, nn] = Pw_sorted[max_likelihood_W] / Pw_sorted[0] 
-
+                        
                     elif third_step_type == 'MAP':
                         if add_dd_based_prior: 
                             # 3.1 calculate new priors based on X(Y==1, PD1) (after DD)
@@ -619,6 +530,7 @@ for typical_codes in use_typical_codes:
                             pass
                         else:
                             if add_dd_based_prior: 
+                                orig_prior_weight = 0.5
                                 # use weighted average to merge the 2 probabilities
                                 # where one of the 2 prob is 0, keep the merged probability as zero
                                 zero_probability_idx_Pu = np.where(Pu[:,PD1] == 0)[1]
@@ -860,9 +772,14 @@ for typical_codes in use_typical_codes:
                         estU[0, DD2] = 1
                         
                     if np.sum(U != estU) == 0:
-                        count_add_success_third_step[idxK, idxT, nn] += 1
+                        count_success_exact_third_step[idxK, idxT, nn] += 1
                         count_success_non_exact_third_step[idxK, idxT, nn] += (K-len(DD2))/K
+                        if viterbi_fail_try_full_map:
+                            print('here')
                     else:
+                        if viterbi_fail_try_full_map:  # full map also failed in terms of exact analysis
+                            count_viterbi_fail_and_full_map_fail[idxK, idxT] += 1
+
                         # count only the items detected in the 3rd step 
                         detected_defectives = np.where(estU==1)[1] # may be errornous detection
                         not_detected = set(true_defective_set)-set(detected_defectives)
@@ -905,8 +822,8 @@ for typical_codes in use_typical_codes:
         # Normalize success and counters
         
         count_success_DD_exact = np.sum(count_success_DD_exact, axis=2) * 100/nmc
-        count_add_success_third_step = np.sum(count_add_success_third_step, axis=2) * 100/nmc 
-        count_success_exact_tot = count_success_DD_exact + count_add_success_third_step
+        count_success_exact_third_step = np.sum(count_success_exact_third_step, axis=2) * 100/nmc 
+        count_success_exact_tot = count_success_DD_exact + count_success_exact_third_step
         count_success_DD_non_exact = np.sum(count_success_DD_non_exact, axis=2) * 100/nmc 
         count_success_non_exact_third_step = np.sum(count_success_non_exact_third_step, axis=2) * 100/nmc 
         count_success_non_exact_tot = count_success_DD_non_exact + count_success_non_exact_third_step
@@ -947,11 +864,20 @@ for typical_codes in use_typical_codes:
         permutations_label = ''
         if third_step_type == 'MAP':
             permutations_label = '_perm_factor' + str(permutation_factor) + '_'
+        
+        viterbi_label = ''
+        if third_step_label == 'viterbi+MAP':
+            viterbi_label =  '_max_paths_for_lva' + str(max_paths_for_lva) 
+            if do_map_if_viterbi_fail:
+                viterbi_label = viterbi_label + '_map_if_no_paths'
+            else:
+                viterbi_label = viterbi_label + '_no_map_if_no_paths'
+            viterbi_label = viterbi_label + '_' + str(viterbi_time_steps) + 'steps'
 
         if save_fig or save_raw:    
             print('Save...')
             time_str = datetime.now().strftime("%d%m%Y_%H%M%S")
-            experiment_str = 'N' + str(N) + '_nmc' + str(nmc) + '_methodDD_' + method_DD + permutations_label + '_thirdStep_' + third_step_label + typical_label + '_Tbaseline_' +  Tbaseline + '_'
+            experiment_str = 'N' + str(N) + '_nmc' + str(nmc) + '_methodDD_' + method_DD + permutations_label + '_thirdStep_' + third_step_label + viterbi_label + typical_label + '_Tbaseline_' +  Tbaseline + '_'
             results_dir_path = os.path.join(save_path, 'countPDandDD_' + experiment_str + time_str)
             os.mkdir(results_dir_path)
         

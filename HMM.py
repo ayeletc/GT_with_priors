@@ -16,28 +16,69 @@ class HMM:
         self.init_prob_1step = init_prob_1step
 
     def set_transitions_probabilities_for_2steps(self):
+        '''
+        States:
+            0: dnd+dnd   (00)
+            1: dnd+dd    (01)
+            2: dd+dnd    (10)
+            3: dd+dd     (11)
+        '''
         pi_B = self.init_prob_1step[1]
         determinisitic_obs = [0,1,3,4]
-        determinisitic_obs_cur_state_dict = {0:0, 1:1, 3:2, 4:3} # mapping deterministic observations to states
+        # mapping deterministic observations to states:
+        determinisitic_obs_cur_state_dict = {0:0, # dnd+dnd
+                                            1:1,  # dnd+dd
+                                            3:2,  # dd+dnd
+                                            4:3}  # dd+dd
 
         ambiguity_obs = [2, 5, 6, 7, 8]
 
         # map observations to the possible current states
-        ambiguity_obs_cur_state_dict = {2: [0, 1],
-                                        5: [2, 3],
-                                        6: [0, 2],
-                                        7: [1, 3]}
+        ambiguity_obs_cur_state_dict = {2: [0, 1], # obs dnd+unknown    => dnd+dnd / dnd+dd
+                                        5: [2, 3], # obs dd+unknown     => dd+dnd  / dd+dd
+                                        6: [0, 2], # obs unknown+dnd    => dnd+dnd / dd+dnd
+                                        7: [1, 3]} # obs unknown+dd     => dnd+dd  / dd+dd
         
         # map observations to the transition probabilities to the possible states in ambiguity_obs_cur_state_dict
         # for example: when we get observation 5, the state may be either 2 with probability self.trans_mat_1step[1,0]
         # or it may be 3 with probability self.trans_mat_1step[1,1]
-        ambiguity_obs_prob_dict = { 2: [self.trans_mat_1step[0,0],                  self.trans_mat_1step[0,1]],
-                                    5: [self.trans_mat_1step[1,0],                  self.trans_mat_1step[1,1]],
-                                    6: [self.trans_mat_1step[0,0],                  (pi_B/(1-pi_B))*self.trans_mat_1step[1,0]],
-                                    7: [(pi_B/(1-pi_B))*self.trans_mat_1step[1,0],  self.trans_mat_1step[1,1]]}
+        # ambiguity_obs_prob_dict = { 2: [self.trans_mat_1step[0,0],                  self.trans_mat_1step[0,1]], 
+        #                             5: [self.trans_mat_1step[1,0],                  self.trans_mat_1step[1,1]],
+        #                             6: [self.trans_mat_1step[0,0],                  (pi_B/(1-pi_B))*self.trans_mat_1step[1,0]],
+        #                             7: [(pi_B/(1-pi_B))*self.trans_mat_1step[1,0],  self.trans_mat_1step[1,1]]} 
         
+        semi_ambiguity_obs_in_2nd_state_prob_dict = { 2: [self.trans_mat_1step[0,0],        self.trans_mat_1step[0,1]], 
+                                                    5: [self.trans_mat_1step[1,0],          self.trans_mat_1step[1,1]]}
+        '''
+        In observations 6,7 we have ambiguity in the 1st state (unknown+___)
+        Therefore we set the transition probability according to the previous state
+        For example: 
+        Obs 6 is unknown+dnd and may indicate either state 0 or 2. If the previous state was 0 or 2 (00/10 that end with 0), 
+        then the probability that the current state is 0 equals to Ptrans0->0, and current state is 2 w.p. Ptrans0->1. 
+        That explains the first 2 rows in this dictionary.
+        If the preivous state was 1 or 3 (ends with 1) then w.p. Ptrans1->0 the current state is 00 (state 0), 
+        and w.p. Ptrans1->1 the current state is 10 (state 2). That explains the rows 3,4 in the dictionary.
+        
+        Exactly the same happens with obs 7 (with the same probabilities).
+        semi_ambiguity_obs_in_obs6_prob_dict = {0:  [self.trans_mat_1step[0,0],       self.trans_mat_1step[0,1]],
+                                                2:  [self.trans_mat_1step[0,0],       self.trans_mat_1step[0,1]],
+                                                1:  [self.trans_mat_1step[1,0],       self.trans_mat_1step[1,1]],
+                                                3:  [self.trans_mat_1step[1,0],       self.trans_mat_1step[1,1]]}
+        
+        semi_ambiguity_obs_in_obs7_prob_dict = {0:  [self.trans_mat_1step[0,0],       self.trans_mat_1step[0,1]],
+                                                2:  [self.trans_mat_1step[0,0],       self.trans_mat_1step[0,1]],
+                                                1:  [self.trans_mat_1step[1,0],       self.trans_mat_1step[1,1]],
+                                                3:  [self.trans_mat_1step[1,0],       self.trans_mat_1step[1,1]]}
+        '''
+
+        semi_ambiguity_obs_in_1st_state_prob_dict = {0:  [self.trans_mat_1step[0,0],       self.trans_mat_1step[0,1]],
+                                                    2:  [self.trans_mat_1step[0,0],       self.trans_mat_1step[0,1]],
+                                                    1:  [self.trans_mat_1step[1,0],       self.trans_mat_1step[1,1]],
+                                                    3:  [self.trans_mat_1step[1,0],       self.trans_mat_1step[1,1]]}
+
         return determinisitic_obs, determinisitic_obs_cur_state_dict, \
-                ambiguity_obs, ambiguity_obs_cur_state_dict, ambiguity_obs_prob_dict
+                ambiguity_obs, ambiguity_obs_cur_state_dict, \
+                semi_ambiguity_obs_in_2nd_state_prob_dict, semi_ambiguity_obs_in_1st_state_prob_dict
     '''
     # Classic Parallel LVA Decoder using heaps and rankings
     def list_viterbi_algo_parallel(self, obs, topK):
@@ -162,8 +203,9 @@ class HMM:
         rank = np.zeros((T, n_states, top_k), dtype=np.int16)
         
         determinisitic_obs, determinisitic_obs_cur_state_dict, \
-                ambiguity_obs, ambiguity_obs_cur_state_dict, ambiguity_obs_prob_dict = \
-                self.set_transitions_probabilities_for_2steps()
+        ambiguity_obs, ambiguity_obs_cur_state_dict, \
+        semi_ambiguity_obs_in_2nd_state_prob_dict, semi_ambiguity_obs_in_1st_state_prob_dict = \
+            self.set_transitions_probabilities_for_2steps()
 
         # Initialize tt = 0
         if obs[0] in determinisitic_obs:
@@ -188,25 +230,43 @@ class HMM:
                     ml_prob[0, ii, k] = 0.0
                     ml_prev_state[0, ii, k] = ii
             
-        else: # semi-ambiguity
+        elif obs[0] in [6,7]: # semi-ambiguity in 1st state
             possible_states_list = ambiguity_obs_cur_state_dict[obs[0]]
-            probabilities_list = ambiguity_obs_prob_dict[obs[0]]
-            for ii, st in enumerate(possible_states_list):
-                ml_prob[0, st, 0] = probabilities_list[ii]
+            # probabilities_list_1st_state_ambiguity = semi_ambiguity_obs_in_1st_state_prob_dict[obs[0]]
+            for st in possible_states_list:
+                ml_prob[0, st, 0] = self.init_prob[st] / \
+                                    (self.init_prob[possible_states_list[0]]+self.init_prob[possible_states_list[1]])
                 ml_prev_state[0, st, 0] = st
             
             for ii in range(n_states):
                 if st in possible_states_list:
                     continue # already configured
                 ml_prev_state[0, ii, 0] = ii
+            
             for k in range(1, top_k):
                     ml_prob[0, ii, k] = 0.0
                     ml_prev_state[0, ii, k] = ii
+        
+        elif obs[0] in [2,5]: # semi-ambiguity in 2nd state
+            possible_states_list = ambiguity_obs_cur_state_dict[obs[0]]
+            probabilities_list_2nd_state_ambiguity = semi_ambiguity_obs_in_2nd_state_prob_dict[obs[0]]
+            for ii, st in enumerate(possible_states_list):
+                ml_prob[0, st, 0] = probabilities_list_2nd_state_ambiguity[ii]
+                ml_prev_state[0, st, 0] = st
+            
+            for ii in range(n_states):
+                if st in possible_states_list:
+                    continue # already configured
+                ml_prev_state[0, ii, 0] = ii
 
+            for k in range(1, top_k):
+                    ml_prob[0, ii, k] = 0.0
+                    ml_prev_state[0, ii, k] = ii
+        
         # Go forward calculating top k scoring paths
         # for each state s1 from previous state s2 at time step t
         for tt in range(1, T):
-            for s1 in range(n_states):
+            for s1 in range(n_states): # current state
                 h = []
                 
                 if obs[tt] in determinisitic_obs:
@@ -226,16 +286,28 @@ class HMM:
                             prev_state = s2
                             heapq.heappush(h, (prob, prev_state))
 
-                else:
+                elif obs[tt] in [2, 5]:
                     possible_states_list = ambiguity_obs_cur_state_dict[obs[tt]]
-                    probabilities_list = ambiguity_obs_prob_dict[obs[tt]]
-                    for s2 in range(n_states):
+                    probabilities_list = semi_ambiguity_obs_in_2nd_state_prob_dict[obs[tt]]
+                    for s2 in range(n_states): # previous state
                         for k in range(top_k):
                             if s1 in possible_states_list:
                                 prob = ml_prob[tt - 1, s2, k] * probabilities_list[possible_states_list.index(s1)]
                             else:
                                 prob = 0.0
-                            prev_state = s2
+                            prev_state = s2 # not s1?
+                            heapq.heappush(h, (prob, prev_state))
+                
+                elif obs[tt] in [6, 7]:
+                    possible_states_list = ambiguity_obs_cur_state_dict[obs[tt]]
+                    for s2 in range(n_states): # previous state
+                        probabilities_list = semi_ambiguity_obs_in_1st_state_prob_dict[s2]
+                        for k in range(top_k):
+                            if s1 in possible_states_list:
+                                prob = ml_prob[tt - 1, s2, k] * probabilities_list[possible_states_list.index(s1)]
+                            else:
+                                prob = 0.0
+                            prev_state = s2 # not s1?
                             heapq.heappush(h, (prob, prev_state))
 
                 # Get the sorted list (by probabilities), descending order 
@@ -262,7 +334,7 @@ class HMM:
                 prob = ml_prob[T-1, s1, k] 
 
                 # Sort by the probability, but retain what state it came from and the k
-                heapq.heappush(h, (prob, s1, k))
+                heapq.heappush(h, (prob, s1, -k))
 
         # Then get sorted by the probability including its state and top_k
         h_sorted = [heapq.heappop(h) for _ in range(len(h))]
@@ -277,7 +349,7 @@ class HMM:
             # The maximum probability and the state it came from
             max_prob = h_sorted[k][0]
             state = h_sorted[k][1]
-            rank_k = h_sorted[k][2]
+            rank_k = -h_sorted[k][2]
             # Assign to output arrays 
             path_probs[k][-1] = max_prob
             path[k][-1] = state
@@ -296,7 +368,6 @@ class HMM:
         return path, path_probs, ml_prob, ml_prev_state
 
     def list_viterbi_algo_parallel_with_deter(self, obs, top_k):
-        # TODO: DOIT
         ''' 
         Input:
         - obs - np.array Tx1 - observations durint T time steps. each obs is an index in [1,2,...,MAX_OBS_IDX]
@@ -351,7 +422,7 @@ class HMM:
                 h = []
                 for s2 in range(n_states):
                     for k in range(top_k):
-                        if obs[tt] == s1:
+                        if obs[tt] == s1:# obsereved 0 and next state is 0 or obsereved 1 and next state is 1
                             prob = ml_prob[tt - 1, s2, k] # transition probability = 1 for DD&defecgive of DND and not defective
                         elif (obs[tt] == 1 and s1 == 0) or (obs[tt] == 0 and s1 == 1): # probability to be defective when observed DND = 0 
                             prob = 0
@@ -385,11 +456,11 @@ class HMM:
                 prob = ml_prob[T-1, s1, k] 
 
                 # Sort by the probability, but retain what state it came from and the k
-                heapq.heappush(h, (prob, s1, k))
+                heapq.heappush(h, (prob, s1, -k))
 
         # Then get sorted by the probability including its state and top_k
         h_sorted = [heapq.heappop(h) for _ in range(len(h))]
-        h_sorted.reverse()
+        h_sorted.reverse() # notice the sort of k is reversed - maybe we need to push -k instead of k ?
 
         # init blank path
         path = np.zeros((top_k, T), int)
@@ -400,7 +471,7 @@ class HMM:
             # The maximum probability and the state it came from
             max_prob = h_sorted[k][0]
             state = h_sorted[k][1]
-            rank_k = h_sorted[k][2]
+            rank_k = -h_sorted[k][2]
             # Assign to output arrays - yul - canceled
             path_probs[k][-1] = max_prob
             path[k][-1] = state

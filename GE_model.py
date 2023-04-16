@@ -286,10 +286,14 @@ class GE_model:
         d = 1-self.s
         trans_mat_1step =   np.array([[1-self.q, self.q], 
                                     [self.s, 1-self.s]])
-        trans_mat_2steps =  np.array([[a*a,  a*b,   b*c,    b*d],
+        trans_mat_2steps_bugged =  np.array([[a*a,  a*b,   b*c,    b*d],
                                     [b*c,   c*d,   c*d,    d*d],
                                     [a**2,  a*b,   b*c,    b*d],
                                     [b*c,   c*d,   c*d,    d*d]])
+        trans_mat_2steps =  np.array([[a*a,  a*b,   b*c,    b*d],
+                                    [c*a,   c*b,   d*c,    d*d],
+                                    [a**2,  a*b,   b*c,    b*d],
+                                    [c*a,   c*b,   c*d,    d*d]])
         init_prob_1step =   np.array([1-self.pi_B, self.pi_B])
         init_prob_2steps =  np.array([init_prob_1step[0]*a, init_prob_1step[0]*b,
                                         init_prob_1step[1]*c, init_prob_1step[1]*d])

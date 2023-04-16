@@ -7,6 +7,23 @@ import bisect
 import zipfile
 
 
+def single_map(comb, N, DND1, DD2, X, Y, p, ge_model):
+    comb = comb.tolist()
+    U_forW = np.zeros((1,N))
+    U_forW[0,list(set(comb + DD2))] = 1
+    
+    X_forW = X*U_forW
+    Y_forW = np.sum(X_forW, 1) > 0
+    if (Y_forW != Y).any():
+        return 0
+    Pw_map = ge_model.calc_Pw_fixed(N, comb, DD2, DND1)
+    # Pw_vietrbi = TODO:get the path probability and compare to the map's
+    P_X_Sw = p ** np.sum(X_forW == 1)
+    return Pw_map * P_X_Sw
+
+def single_map_test(comb):
+    return np.sum(comb)
+
 def rand_array_fixed_sum(n1,n2, fixed_sum):
     if 'fixed_sum' not in locals():
         fixed_sum = 1
@@ -62,7 +79,7 @@ dont_include_variables = ['np', 'scipy', 'scipy.io', 'numpy', 'pd', 'matplotlib'
                         'calculate_lower_bound_ISI_m1', 'calc_entropy_y_given_x_binary_RV', 'calc_entropy_binary_RV', \
                         'test_calculate_lower_bound_ISI_m1', \
                         'not_detected', 'ge_model', 'perm', 'combinations', 'permutations'\
-                        'num_of_false_positive_in_DD2', 'enlarge_tests_num_by_factors', 'count_add_success_third_step', 'count_not_detected_defectives', \
+                        'num_of_false_positive_in_DD2', 'enlarge_tests_num_by_factors', 'count_not_detected_defectives', \
                         '__builtins__', '__cached__', '__doc__', '__file__', '__loader__', '__name__', '__package__','__spec__', 'fig']
 
 def save_workspace(filename, names_of_spaces_to_save, dict_of_values_to_save):
