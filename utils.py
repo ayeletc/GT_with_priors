@@ -66,13 +66,13 @@ def compute_HammingDistance(X):
 
 dont_include_variables = ['np', 'scipy', 'scipy.io', 'numpy', 'pd', 'matplotlib', 'zipfile', \
                         'time', 'tqdm', 'math', 'itertools', 'random', 'go', 'px', \
-                        'datetime', 'os', 'plt', 'shelve', 'reverse', 'bisect', \
+                        'datetime', 'os', 'plt', 'binomial', 'shelve', 'reverse', 'bisect', \
                         'plot_DD_vs_K_and_T', 'plot_expected_DD', 'plot_expected_PD', 'plot_expected_unknown', \
                         'plot_expected_not_detected', 'plot_expected_unknown_avg', 'plot_Psuccess_vs_T', 'plot_and_save', \
                         'save_workspace', 'load_workspace', 'rand_array_fixed_sum', 'split_list_into_2_sequence', \
                         'sample_population_no_corr', 'sample_population_ISI', 'sample_population_ISI+m1', \
                         'spread_infection_using_corr_mat', \
-                        'hmm_model', 'hmm_model_2steps', \
+                        'hmm_model', 'hmm_model_2steps', 'hmm_model_2steps_2', \
                         'calculatePu', 'calculatePw', 'test_sample_population_no_corr', 'test_sample_population_ISI', \
                         'test_sample_population_ISI_m1', 'sample_population_indicative', 'sort_comb_by_priors', \
                         'sort_comb_by_priors_ISI_m1' , \
@@ -215,6 +215,17 @@ def add_new_value_and_symbol_keep_sort(values_arr, symbols_arr, value, symbol):
 def prepare_nchoosek_comb(array, k):
     return list(combinations(array, k))
 
+def convert_int_to_base(n, base):
+    # for example: n=17, base=3 return [1,2,2]
+    sign = '-' if n<0 else ''
+    n = abs(n)
+    if n < base:
+        return n
+    s = ''
+    while n != 0:
+        s = str(n%base) + s
+        n = n//base
+    return list(map(int, sign+s))
 
 if __name__ == '__main__':
     # db_path=r'/Users/ayelet/Library/CloudStorage/OneDrive-Technion/Alejandro/count_possibly_defected_results/shelve_raw/countPDandDD_N20_nmc500_methodDD_Sum_typical_Tbaseline_ML_02082022_224856.mat'
