@@ -15,9 +15,11 @@ class GE_model:
 
     def calculate_num_of_permutations_by_entropy(self, K, T, nPD):
         p = np.log(2) / K
-        prob_error_DD = 1-p*(1-p)**(nPD-1)
-        entropy_error_DD = -prob_error_DD * np.log2(prob_error_DD) - (1-prob_error_DD) * np.log2(1-prob_error_DD)
-        self.num_of_permutations = np.ceil(2 ** (T * entropy_error_DD)).astype(np.int64)
+        # prob_error_DD = 1-p*(1-p)**(nPD-1)
+        # entropy_error_DD = -prob_error_DD * np.log2(prob_error_DD) - (1-prob_error_DD) * np.log2(1-prob_error_DD)
+        prob_error_COMA = 1-p*(1-p)**K
+        entropy_error_COMA = -prob_error_COMA * np.log2(prob_error_COMA) - (1-prob_error_COMA) * np.log2(1-prob_error_COMA)
+        self.num_of_permutations = np.ceil(2 ** (T * entropy_error_COMA)).astype(np.int64)
 
     def sample_gilbert_elliot_channel(self, N, max_bad=np.inf):
         # for GT with fixed num of K : if there are more than max_bad bad items, return false and don't complete the chain
@@ -102,46 +104,20 @@ class GE_model:
         return None
     
     def calculate_lower_bound_GE(self, N, Pe=0.0):
+        # calculate lb by joint entropy
+        # H[U1,...,UN] = H(U1)+H(U2|U1)+...+H(UN|UN-1)
         return self.calculate_entropy(N) * (1-Pe)
+        # lb = 0
+        # for ii in range(1,N):
+
+    def calculate_entropy2(self, N, K):
+        H = lambda x: -x*np.log2(x)-(1-x)*np.log2(1-x)
+        return (N-K) * H(self.q) + K * H(self.s)
     
     def calculate_entropy(self, N):
-        return N * ( (1-self.pi_B) * (-self.q*np.log2(self.q)-(1-self.q)*np.log2(1-self.q)) +   \
-                    self.pi_B * (-self.s*np.log2(self.s)-(1-self.s)*np.log2(1-self.s)) )
-    '''
-    def sort_comb_by_priors_GE(self, N, all_permutations, DD2, DND1):
-        Pw = np.ones((all_permutations.shape[0],))
-        Pu_with_priors = np.zeros((1,N))
-        \''' 
-        calculate Pw
-        P(W) = P(U) = P(Ud1) * P(Ud2|Ud1) * .... * P(Udk|Udk-1, ..., Ud1) 
-        In GE P(Udk|Udk-1, ..., Ud1) = P(Udk|Udk-1)  [markov chain]
-        \'''
-        for ii, permute in enumerate(all_permutations):
-            permute = sorted(permute.tolist() + DD2)
-            if permute[0] in DD2:
-                Pw[ii] = 1
-            elif permute[0] in DND1:
-                Pw[ii] = 0
-                continue
-            else:
-                Pw[ii] = self.pi_B
+        H = lambda x: -x*np.log2(x)-(1-x)*np.log2(1-x)
+        return N * ( (1-self.pi_B) * H(self.q) + self.pi_B * H(self.s))
 
-            for jj in range(1,len(permute)):
-                p_item_is_defective_given_previous = self.get_conditional_probability_GE(permute[jj-1], DD2, DND1)
-                Pw[ii] *= p_item_is_defective_given_previous
-            
-            Pu_with_priors[0,permute] += Pw[ii] 
-        # sort all permutations by their probabilities Pw
-        Pw_idx = Pw.argsort()[::-1] # descending order, first has the highest probability
-        Pw_sorted = Pw[Pw_idx]
-        if Pw_sorted[0] == 0:
-            print('overflow?')
-            pass
-        all_permutations_sorted = all_permutations[Pw_idx,:]
-        # normalize Pu_with_priors
-        Pu_with_priors /= np.sum(Pu_with_priors)
-        return all_permutations_sorted, Pw_sorted, Pu_with_priors
-    '''
     def sort_comb_by_priors_GE_cut_by_entropy(self, N, K, T, nPD, DD2, DND1, unknowns, permutation_factor=50):
         '''
         1. calculate Np the number of permutations we want to check - 2^( T*H(Perror_dd) )
@@ -163,21 +139,21 @@ class GE_model:
         (1-p) + p*(Phidden)
         Phidden = 1-P(there are no more PDs on) = 1-P( (#PD-1) items are off ) = 1-(1-p)^(#PD-1)
         '''
+        num_of_permutations_binomial = math.comb(len(unknowns), K_left)
         if self.num_of_permutations is None:
             self.calculate_num_of_permutations_by_entropy(K, T, nPD)
-
-        # print('self.num_of_permutations', self.num_of_permutations)
-        
-        num_of_permutations_binomial = math.comb(len(unknowns), K_left)
         # print('num_of_permutations_binomial', num_of_permutations_binomial)
         # if num_of_permutations_binomial < 500 and num_of_permutations_binomial > self.num_of_permutations:
         #     save_permutations = num_of_permutations_binomial
         # else:
         #     save_permutations = np.min([self.num_of_permutations, num_of_permutations_binomial])
-        if num_of_permutations_binomial > self.num_of_permutations:
-            num_permutations_to_save = permutation_factor*self.num_of_permutations
+        if permutation_factor == -1:
+            num_permutations_to_save = num_of_permutations_binomial
         else:
-            num_permutations_to_save = num_of_permutations_binomial#self.num_of_permutations
+            if num_of_permutations_binomial > self.num_of_permutations:
+                num_permutations_to_save = permutation_factor*self.num_of_permutations
+            else:
+                num_permutations_to_save = num_of_permutations_binomial#self.num_of_permutations
         Pw = np.zeros((num_permutations_to_save,))
         high_prob_permutations = np.zeros((num_permutations_to_save, K_left))
         num_of_iterations_in_sort = num_of_permutations_binomial
@@ -239,46 +215,76 @@ class GE_model:
                 probability_per_item[item] = 1 - self.get_conditional_probability_GE(item, DD2, DND1)
         Pw = np.prod(probability_per_item)
         return Pw
-        # # probability of the first item in the permutation:
-        # first_item = 0
-        # # if 0 in permute:
-        # if first_item in DD2:
-        #     Pw = 1
-        # elif first_item in DND1:
-        #     Pw = 0
-        # else:
-        #     Pw = self.pi_B
-        # if 0 not in permute:
-        #     Pw = 1-Pw
 
-        # if Pw ==0: 
-        #     return Pw
-        # # multiply transition probabilities
-        # for jj in range(1,N):
-        #     if jj in permute:
-        #         p_item_is_defective_given_previous = self.get_conditional_probability_GE(jj, DD2, DND1)
-        #     else:
-        #         p_item_is_defective_given_previous = 1-self.get_conditional_probability_GE(jj, DD2, DND1)
-        #     Pw *= p_item_is_defective_given_previous
-        # return Pw
-
-    def model_as_hmm(self, K, T, nPD, p):
-        states = np.array(['non_defective', 'defective'])
+    def model_as_hmm(self, K, T, nPD, p, ver_states=True):
+        if ver_states:
+            states = np.array(['non_defective', 'defective'])
+        else:
+            states = np.array(['0', '1'])
         init_prob = np.array([1-self.pi_B, self.pi_B])
         trans_mat = np.array([  [1-self.q, self.q], 
                                 [self.s, 1-self.s]  ])
-        P_PD_notDefective = (1-p*(1-p)**(K-1))**T # probability to be PD given its not defective (after DND algo)
+        P_PD_notDefective = (1-p*(1-p)**(K-1))**T # probability to be PD given its not defective (occlusion in COMA)
         P_PD_defective = (1-p*(1-p)**(nPD-1))**T # probability to be PD given its defective (after DD algo)
         emit_mat = np.array([[1-P_PD_notDefective,   0,                  P_PD_notDefective], 
                             [0,                      1-P_PD_defective,   P_PD_defective]])
         hmm_model = HMM(states=states, init_prob=init_prob, trans_mat=trans_mat, emit_mat=emit_mat)
         return hmm_model
     
+    def model_as_hmm_with_long_memory(self, K, T, nPD, p, ts=2):
+        if ts == 1:
+            return self.model_as_hmm(K, T , nPD, p)
+        ## set states
+        n_states = int(2**ts)
+        hmm_1ts = self.model_as_hmm(K, T, nPD, p)
+        states_idx = np.arange(n_states)
+        states_binary = [bin(x)[2:].zfill(ts) for x in states_idx]
+        # states_names = 
+        
+        ## calculate transition matrix:
+        prev_trans_mat = hmm_1ts.trans_mat
+        for cur_ts in range(2,ts+1): # if ts==2 do one iteration
+            cur_n_states = int(2**cur_ts)
+            cur_trans_mat = np.zeros((cur_n_states, 2))
+
+            for half in ['top','bottom']:
+                if half == 'top':
+                    row = 0
+                else:
+                    row = 1
+                aux_mat = np.zeros((int(cur_n_states/2),2))
+                for ii in range(aux_mat.shape[0]):
+                    for jj in range(2):
+                            if ii < aux_mat.shape[0]/2:
+                                aux_mat[ii,jj] = hmm_1ts.trans_mat[row,0]
+                            else:
+                                aux_mat[ii,jj] = hmm_1ts.trans_mat[row,1]
+                if half == 'top':
+                    cur_trans_mat[:int(cur_n_states/2), :] = aux_mat * prev_trans_mat
+                else:
+                    cur_trans_mat[int(cur_n_states/2):, :] = aux_mat * prev_trans_mat
+            
+            prev_trans_mat = cur_trans_mat
+
+        cur_trans_mat = cur_trans_mat / np.sum(cur_trans_mat, axis=1)[:, np.newaxis]
+        
+        ## calculate initial step
+        init_prob = np.ones((n_states,))
+        init_prob[:int(n_states/2)] = hmm_1ts.init_prob[0]
+        init_prob[int(n_states/2):] = hmm_1ts.init_prob[1]
+        for ii, state in enumerate(states_binary):
+            for t in range(ts-1):
+                s1 = int(state[t])
+                s2 = int(state[t+1])
+                init_prob[ii] *= hmm_1ts.trans_mat[s1, s2]
+
+        return HMM(states=states_binary, init_prob=init_prob, trans_mat=prev_trans_mat, ts=ts, trans_mat_1step=hmm_1ts.trans_mat, emit_mat=None)
+
+
     def model_as_hmm_with_2_steps_memory(self, K, T, nPD, p):
         states = np.array(['non_defective | non_defective', 'non_defective | defective', 
                             'defective | non_defective', 'defective | defective'])
         init_prob_1step = np.array([1-self.pi_B, self.pi_B]) 
-        
         
         a = 1-self.q
         b = self.q
@@ -286,10 +292,6 @@ class GE_model:
         d = 1-self.s
         trans_mat_1step =   np.array([[1-self.q, self.q], 
                                     [self.s, 1-self.s]])
-        trans_mat_2steps_bugged =  np.array([[a*a,  a*b,   b*c,    b*d],
-                                    [b*c,   c*d,   c*d,    d*d],
-                                    [a**2,  a*b,   b*c,    b*d],
-                                    [b*c,   c*d,   c*d,    d*d]])
         trans_mat_2steps =  np.array([[a*a,  a*b,   b*c,    b*d],
                                     [c*a,   c*b,   d*c,    d*d],
                                     [a**2,  a*b,   b*c,    b*d],
@@ -306,23 +308,15 @@ class GE_model:
                         init_prob_1step=init_prob_1step, trans_mat_1step=trans_mat_1step, emit_mat=None)
         return hmm_model
 
+    
     def parse_2step_to_1step(self, seq_2step):
         n2 = seq_2step.shape[0]
         n1 = int(n2*2)
         seq_1step = np.zeros((n1,))
         for ii in range(n2):
-            if seq_2step[ii] == 0:
-                seq_1step[ii*2] = 0
-                seq_1step[ii*2+1] = 0
-            elif seq_2step[ii] == 1:
-                seq_1step[ii*2] = 0
-                seq_1step[ii*2+1] = 1
-            elif seq_2step[ii] == 2:
-                seq_1step[ii*2] = 1
-                seq_1step[ii*2+1] = 0
-            elif seq_2step[ii] == 3:
-                seq_1step[ii*2] = 1
-                seq_1step[ii*2+1] = 1
+            seq_1step[ii*2:ii*2+2] = convert_int_to_base(seq_2step[ii], 2)
         return seq_1step
+
+    if __name__ == '__main__':
+        pass
     
-    # def parse_observation_2step_to
