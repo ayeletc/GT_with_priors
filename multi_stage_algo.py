@@ -16,20 +16,10 @@ import scipy.io
 
 
 #%% Config simulation
-N                   = 100 # for Markov: N=500, K=3 ; N=1024, K=8; N=10000, K=13 
+N                   = 500 # for Markov: N=500, K=3 ; N=1024, K=8; N=10000, K=13 
 vecK                = [3]#[6,8,10,12,14,16,18,20,22,24]
 nmc                 = 100000
-'''
-For n=500,K=3:
-if the criteria is whether the defective set is in the estimatons of lva or no, then
-[0.5, 0.6,0.7] can reach the limit (with L=50 trajectories), and 0.8 also can reach 
-it but it takes more time.
-if the criteria is whether the gt including lva+map reached a successful detection of 
-the defective set, then we know that we reach very high success rates so only 
-for ~0.5 and 0.6 we can collect enough data in a reasonable time
-When L=100, we can't collect data even for 0.7 in a reasonable time
-'''
-enlarge_tests_num_by_factors = [0.6]#[0.5, 0.6, 0.7]#[0.5, 0.6, 0.7,0.8,0.9,1.0]#[0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1, 1.1]#[0.5, 0.75, 1, 1.25] #[0.5, 0.25, 0.5, 0.75, 1, 1.5]#[0.75, 0.8, 0.9, 1, 1.25, 1.5, 1.75, 2]# [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.3, 1.7, 2] #[0.85, 0.9, 0.95, 1, 1.25, 1.5, 1.75, 2]#
+enlarge_tests_num_by_factors = [0.5, 0.6, 0.7,0.8,0.9,1.0]
 Tbaseline           = 'ML' # options: 'ML', 'lb_no_priors', 'lb_with_priors', 'GE'
 methods_DD          = ['Normal']#{'Normal', 'Sum'} # options: Normal, Iterative, Sum
 third_step_type     = 'viterbi+MAP' # options: ['MAP', 'MLE', 'MAP_for_GE_all_options', 'MAP_for_GE_stop_search', 'MAP_for_GE_use_sortedPw', 'viterbi', 'viterbi+MAP']
@@ -53,13 +43,13 @@ delta_typical_cols  = 0.1# for N=100,K=3 and T=0.75ML
 delta_typical_rows  = 0.1
 
 ### viterbi config ###
-extend_obsesrvations = True # with 1 step there is not much difference between true/false here, if true fix the paths(cut the last item in the traj_paths)
+extend_obsesrvations = True 
 do_map_if_viterbi_fail = False
-init_paths_number    = 50 # initial number of paths to find in list viterbi algorithm (in the 1st iiteration)
-max_paths_for_lva    = 50 # TODO: try 40 and 60 (already done 80)
+init_paths_number    = 50 
+max_paths_for_lva    = 50 
 step_in_lva_paths    = 50
 viterbi_time_steps   = 1 #1/2/3
-viterbi_comb_threshold = [4*3,6,6,6,6,6]#30 # 30 = K*10=> gamma = 10 = N/50 = N^0.03705 = 0.02*N; 
+viterbi_comb_threshold = [4*3,6,6,6,6,6]
 max_iteration_for_map = 1e6
 gamma_dict = {'0.5': 12,
               '0.6': 6,
@@ -123,25 +113,8 @@ for method_DD in methods_DD:
     count_viterbi_relevant_paths = np.zeros((numOfK, num_of_test_scale, nmc))
     Pw_of_true_out_of_max_Pw = np.zeros((numOfK, num_of_test_scale, nmc))
     paths_with_less_than_K = np.zeros((numOfK, num_of_test_scale, nmc))
-    
-    # Dataset for ViterbiNet
-    n_samples = int(nmc/10)
-    half_n_samples = int(n_samples/2)
-    # dataset_observations_suc = np.zeros((numOfK, num_of_test_scale, 1, N, half_n_samples)).astype(np.uint8)
-    # dataset_estimations_suc = np.zeros((numOfK, num_of_test_scale, step_in_lva_paths, N, half_n_samples)).astype(np.uint8)
-    # dataset_observations_fail = np.zeros((numOfK, num_of_test_scale, 1, N, half_n_samples)).astype(np.uint8)
-    # dataset_estimations_fail = np.zeros((numOfK, num_of_test_scale, step_in_lva_paths, N, half_n_samples)).astype(np.uint8)
-    
-    # dataset_partial_recovery_suc = np.zeros((numOfK, num_of_test_scale, half_n_samples)).astype(np.float32) # detection rate
-    # dataset_partial_recovery_fail = np.zeros((numOfK, num_of_test_scale, half_n_samples)).astype(np.float32) # detection rate
 
-    dataset_observations = np.zeros((numOfK, num_of_test_scale, 1, N, n_samples)).astype(np.uint8)
-    dataset_estimations = np.zeros((numOfK, num_of_test_scale, step_in_lva_paths, N, n_samples)).astype(np.uint8)
-    dataset_is_set_in_estimations = np.zeros((numOfK, num_of_test_scale, n_samples)).astype(np.uint8)
-    dataset_is_detected = np.zeros((numOfK, num_of_test_scale, n_samples)).astype(np.uint8)
-    dataset_true_defective_set = np.zeros((numOfK, num_of_test_scale, n_samples, 1, N)).astype(np.uint8)
-    # dataset_partial_recovery = np.zeros((numOfK, num_of_test_scale, n_samples)).astype(np.float32) # detection rate
-    
+  
     #%% Start simulation
     for idxK in range(numOfK):
         K = vecK[idxK]
@@ -418,15 +391,6 @@ for method_DD in methods_DD:
                         # didn't find valid options using viterbi
                         # check if going over all the options is possible:
                         count_viterbi_found_zero_options[idxK, idxT] += 1 
-                        ''' Record for viterbinet dataset'''
-                        if idx_viterbinet_not_in_estimations < half_n_samples:
-                            dataset_observations[idxK, idxT, 0, :, idx_viterbinet] = observations
-                            dataset_estimations[idxK, idxT, :, :, idx_viterbinet] = path_trajs2
-                            dataset_is_set_in_estimations[idxK, idxT, idx_viterbinet] = 0
-                            dataset_is_detected[idxK, idxT, idx_viterbinet] = 0
-                            dataset_true_defective_set[idxK, idxT, idx_viterbinet, :] = U
-                            idx_viterbinet += 1 
-                            idx_viterbinet_not_in_estimations +=1 
 
                         num_of_true_set_options_in_step3 = int(scipy.special.comb(len(unknown2), K-len(DD2)))
                         viterbi_fail_try_full_map = False # initialization
@@ -616,65 +580,7 @@ for method_DD in methods_DD:
                         if set(true_defective_set) - set(opt_set) == set([]):
                             pass
             
-                # Dateset for ViterbiNet
-                if idx_viterbinet_in_estimations < half_n_samples or idx_viterbinet_not_in_estimations < half_n_samples:
-                    # check if true defective set is in estimations:
-                    true_defective_set_in_estimations = False
-                    for r in range(path_trajs2.shape[0]):
-                        path = path_trajs2[r,:]
-                        estimated_defectives = set(np.where(path==1)[0])
-                        if set(true_defective_set).intersection(set(estimated_defectives)) != set():
-                            true_defective_set_in_estimations = True
-                            if idx_viterbinet_in_estimations < half_n_samples:
-                                dataset_observations[idxK, idxT, 0, :, idx_viterbinet] = observations
-                                dataset_estimations[idxK, idxT, :, :, idx_viterbinet] = path_trajs2
-                                dataset_is_set_in_estimations[idxK, idxT, idx_viterbinet] = 1#int(true_defective_set_in_estimations)
-                                dataset_is_detected[idxK, idxT, idx_viterbinet] = count_success_exact_third_step[idxK, idxT, nn]
-                                dataset_true_defective_set[idxK, idxT, idx_viterbinet,:] = U
-                                idx_viterbinet_in_estimations += 1
-                                idx_viterbinet += 1
-                            break
-                    if not true_defective_set_in_estimations and idx_viterbinet_not_in_estimations < half_n_samples:
-                        dataset_observations[idxK, idxT, 0, :, idx_viterbinet] = observations
-                        dataset_estimations[idxK, idxT, :, :, idx_viterbinet] = path_trajs2
-                        dataset_is_set_in_estimations[idxK, idxT, idx_viterbinet] = int(true_defective_set_in_estimations)
-                        dataset_is_detected[idxK, idxT, idx_viterbinet] = count_success_exact_third_step[idxK, idxT, nn]
-                        dataset_true_defective_set[idxK, idxT, idx_viterbinet,:] = U
-                        idx_viterbinet_not_in_estimations += 1
-                        idx_viterbinet += 1
-                        # dataset_observations[idxK, idxT, 0, :, idx_viterbinet] = observations
-                        # dataset_estimations[idxK, idxT, :, :, idx_viterbinet] = path_trajs2
-                        # dataset_is_set_in_estimations[idxK, idxT, idx_viterbinet] = int(true_defective_set_in_estimations)
-                        # dataset_is_detected[idxK, idxT, idx_viterbinet] = count_success_exact_third_step[idxK, idxT, nn]
-
-                '''
-                if count_success_exact_third_step[idxK, idxT, nn] == 1:
-                    # success <=> the true_defective_set in the estimations
-                    if idx_viterbinet_suc < half_n_samples:
-                        dataset_observations_suc[idxK, idxT, 0, :, idx_viterbinet_suc] = observations
-                        dataset_estimations_suc[idxK, idxT, :, :, idx_viterbinet_suc] = path_trajs2
-                        dataset_partial_recovery_suc[idxK, idxT, idx_viterbinet_suc] = count_success_non_exact_third_step[idxK, idxT, nn]
-                        idx_viterbinet_suc += 1
-                if count_success_exact_third_step[idxK, idxT, nn] == 0:
-                    if idx_viterbinet_fail < half_n_samples:
-                        dataset_observations_fail[idxK, idxT, 0, :, idx_viterbinet_fail] = observations
-                        dataset_estimations_fail[idxK, idxT, :, :, idx_viterbinet_fail] = path_trajs2
-                        dataset_partial_recovery_fail[idxK, idxT, idx_viterbinet_fail] = count_success_non_exact_third_step[idxK, idxT, nn]
-                        idx_viterbinet_fail += 1
-                # print('idx_viterbinet_fail', idx_viterbinet_fail)
-                if idx_viterbinet_suc >= half_n_samples and idx_viterbinet_fail >= half_n_samples:
-                    break
-                '''
-                # idx_viterbinet_suc        
-                ''' 
-                in addition to this failure criteria (the gt criteria), add another
-                criteria which is: failure iff the true defective set is not in the estimations at all
-                '''
-                if idx_viterbinet >= n_samples:
-                    break
-            print('idx_viterbinet_in_estimations', idx_viterbinet_in_estimations)
-            print('idx_viterbinet_not_in_estimations', idx_viterbinet_not_in_estimations)
-            print('idx_viterbinet', idx_viterbinet)
+               
         elapsed = time.time() - time_start            
         print('It took {:.3f}[min]'.format(elapsed/60))
     # Normalize success and counters
@@ -765,21 +671,4 @@ for method_DD in methods_DD:
         save_workspace(results_dir_path, variables_to_save, globals())
         save_code_dir(results_dir_path)
 
-        #%% Save dataset
-        # np.savez_compressed(os.path.join(results_dir_path,'dnn_data.npz'), 
-        #                     dataset_observations_suc=dataset_observations_suc, 
-        #                     dataset_estimations_suc=dataset_estimations_suc,
-        #                     dataset_observations_fail=dataset_observations_fail, 
-        #                     dataset_estimations_fail=dataset_estimations_fail,
-        #                     dataset_partial_recovery_suc=dataset_partial_recovery_suc,
-        #                     dataset_partial_recovery_fail=dataset_partial_recovery_fail)
-        np.savez_compressed(os.path.join(results_dir_path,'dnn_data.npz'), 
-                            dataset_observations=dataset_observations, 
-                            dataset_estimations=dataset_estimations,
-                            dataset_is_set_in_estimations=dataset_is_set_in_estimations,
-                            dataset_is_detected=dataset_is_detected,
-                            dataset_true_defective_set=dataset_true_defective_set)
-                            # dataset_partial_recovery=dataset_partial_recovery,
-                            # dataset_partial_recovery=dataset_partial_recovery)
-        
-# %%
+ 
