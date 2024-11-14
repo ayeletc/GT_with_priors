@@ -5,6 +5,7 @@ from scipy.io import savemat, loadmat
 from itertools import combinations
 import bisect 
 import zipfile
+import pickle
 
 
 def single_map(comb, N, DND1, DD2, X, Y, p, ge_model):
@@ -24,6 +25,12 @@ def single_map(comb, N, DND1, DD2, X, Y, p, ge_model):
 def single_map_test(comb):
     return np.sum(comb)
 
+def bitlist2int(bits_list):
+    integer = 0
+    for bit in bits_list:
+        integer = (integer << 1) | bit
+    return integer
+
 def rand_array_fixed_sum(n1,n2, fixed_sum):
     if 'fixed_sum' not in locals():
         fixed_sum = 1
@@ -42,7 +49,7 @@ def split_list_into_2_sequence(list, min_item, max_item):
             if list[ii] - list[ii-1] == 1:
                 num_of_sequences += 1
                 valid_sequenc = False
-                break
+            break
             
             
         else:
@@ -64,7 +71,7 @@ def split_list_into_2_sequence(list, min_item, max_item):
 def compute_HammingDistance(X):
     return (X[:, None, :] != X).sum(2)
 
-dont_include_variables = ['np', 'scipy', 'scipy.io', 'numpy', 'pd', 'matplotlib', 'zipfile', \
+dont_include_variables = ['np', 'scipy', 'scipy.io', 'numpy', 'pd', 'matplotlib', 'zipfile', 'pickle', \
                         'time', 'tqdm', 'math', 'itertools', 'random', 'go', 'px', \
                         'datetime', 'os', 'plt', 'binomial', 'shelve', 'reverse', 'bisect', \
                         'plot_DD_vs_K_and_T', 'plot_expected_DD', 'plot_expected_PD', 'plot_expected_unknown', \
@@ -72,17 +79,22 @@ dont_include_variables = ['np', 'scipy', 'scipy.io', 'numpy', 'pd', 'matplotlib'
                         'save_workspace', 'load_workspace', 'rand_array_fixed_sum', 'split_list_into_2_sequence', \
                         'sample_population_no_corr', 'sample_population_ISI', 'sample_population_ISI+m1', \
                         'spread_infection_using_corr_mat', \
-                        'hmm_model', 'hmm_model_2steps', 'hmm_model_2steps_2', \
+                        'hmm_model', 'hmm_model_2steps', 'hmm_model_2steps_2', 'hmm_model_1step_memory', \
                         'calculatePu', 'calculatePw', 'test_sample_population_no_corr', 'test_sample_population_ISI', \
                         'test_sample_population_ISI_m1', 'sample_population_indicative', 'sort_comb_by_priors', \
                         'sort_comb_by_priors_ISI_m1' , \
                         'calculate_lower_bound_ISI_m1', 'calc_entropy_y_given_x_binary_RV', 'calc_entropy_binary_RV', \
                         'test_calculate_lower_bound_ISI_m1', \
                         'not_detected', 'ge_model', 'perm', 'combinations', 'permutations'\
-                        'num_of_false_positive_in_DD2', 'enlarge_tests_num_by_factors', 'count_not_detected_defectives', \
+                        'num_of_false_positive_in_DD2', 'count_not_detected_defectives', \
+                        'estimated_defectives', \
+                        # 'tune_sample_population_gilbert_elliot_channel', 'test_number_of_defectives_in_gilbert_elliot', \
+                        # 'test_calculate_lower_bound_GE', 'test_sample_population_gilbert_elliot_channel_count_bursts', \
+                        # 'test_sample_population_gilbert_elliot_channel','test_sample_population_gilbert_elliot_channel_hist', \
+                        # 'test_sample_population_indicative', 'sample_population_gilbert_elliot_channel', 'sample_population_ISI_m1', \
                         '__builtins__', '__cached__', '__doc__', '__file__', '__loader__', '__name__', '__package__','__spec__', 'fig']
 
-def save_workspace(filename, names_of_spaces_to_save, dict_of_values_to_save):
+def save_workspace(results_dir_path, names_of_spaces_to_save, dict_of_values_to_save):
     '''
         filename = location to save workspace.
         names_of_spaces_to_save = use dir() from parent to save all variables in previous scope.
@@ -107,12 +119,17 @@ def save_workspace(filename, names_of_spaces_to_save, dict_of_values_to_save):
         # print(key, len(key))
         # if len(key) >= 31:
         #     print(key)
+        if callable(dict_of_values_to_save[key]):
+            continue
         try:
             mydic[key] = dict_of_values_to_save[key]
         except TypeError:
             pass
-    
-    savemat(filename, mydic, long_field_names=True)
+
+    with open(os.path.join(results_dir_path, 'workspace.pickle'), 'wb') as handle:
+        pickle.dump(mydic, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    savemat(os.path.join(results_dir_path, 'workspace.mat'), mydic, long_field_names=True)
 
 def load_workspace(filename):
     '''
@@ -137,8 +154,10 @@ def load_workspace(filename):
 # for key in var_dict.keys():
 #     globals()[key] = var_dict[key]
 
-def save_code_dir(output_path, code_dir_path=r'/Users/ayelet/Library/CloudStorage/OneDrive-Technion/Alejandro/code'):
-    files_names_list = ['coma_and_DD_and_map.py', 'GE_model.py', 'HMM.py', 'utils.py', 'plotters.py', 
+ 
+def save_code_dir(output_path, code_dir_path=os.path.dirname(os.path.realpath(__file__))):
+#def save_code_dir(output_path, code_dir_path=r'/Users/ayelet/Library/CloudStorage/OneDrive-Technion/Alejandro/code'):
+    files_names_list = ['multi_stage_algo.py', 'GE_model.py', 'HMM.py', 'utils.py', 'plotters.py', 
                         'calc_bounds_and_num_of_tests.py', 'sample_population.py']
     with zipfile.ZipFile(os.path.join(output_path, 'code_dir.zip'), 'w') as zipMe:        
         for file in files_names_list:

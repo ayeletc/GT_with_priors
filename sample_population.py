@@ -328,9 +328,13 @@ def sort_comb_by_priors_ISI_m1(all_permutations, Pu, coeff_mat, DD2, debug_corre
     return all_permutations_sorted, Pw_sorted
 
 
+
 def sample_population_gilbert_elliot_channel(N, K, ge_model, epsilon=0.01, debug=False):
     if ge_model is None:
         # q = 10*1/N
+        # q defines the transition probability 0=>1
+        # s define the  transition probability 1=>0
+        
         s=K/N; 
         if s < 0.1:
             s = 0.2 # for N=500, K=10, s=0.1 will output only 1 burst, s=0.15 will output 1 or 2 bursts, 0.2=> even 3 bursts
@@ -343,7 +347,32 @@ def sample_population_gilbert_elliot_channel(N, K, ge_model, epsilon=0.01, debug
         # s = 0.1
         # q = epsilon*s/(1-epsilon)
         pi_B = q/(s+q)
+        '''
+        pi_B = K/N
+        q = 3/N
+        s = q/pi_B-q
+        '''
+        '''
+        pi_B = K/N
+        b = 3 # num of bursts
+        s = 1/(K/b)
+        q = pi_B*s/(1-pi_B)
+        '''
+        '''
+        s = 0.449
+        q = 0.001
+        pi_B = q/(s+q)
+        '''
+        # if N == 500 and K == 10:
+        if K < 5:
+            b = 0.5
+        else:
+            b = 2
+        q = 1.2*b/N
+        s = b/K
+        pi_B = q/(s+q)
         ge_model = GE_model(s, q, pi_B)
+     
     
     num_of_iter = 0
     num_defective_sampled = 0
@@ -358,11 +387,44 @@ def sample_population_gilbert_elliot_channel(N, K, ge_model, epsilon=0.01, debug
         U[0, :] = channel_statef
     if debug:
         print('num_of_iter (until U with K defectives found)', num_of_iter)
-    return U, ge_model
+    return U, ge_model  
+    
+        
+# def sample_population_gilbert_elliot_channel(N, K, ge_model, epsilon=0.01, debug=False):
+#     if ge_model is None:
+#         # q = 10*1/N
+#         s=K/N; 
+#         if s < 0.1:
+#             s = 0.2 # for N=500, K=10, s=0.1 will output only 1 burst, s=0.15 will output 1 or 2 bursts, 0.2=> even 3 bursts
+#         if N < 200:
+#             q = 2*1/N
+#         elif N > 200:
+#             q = 0.5*1/N#0.01#200*1/N
+#         if K/N > 0.3:
+#             s = s/10
+#         # s = 0.1
+#         # q = epsilon*s/(1-epsilon)
+#         pi_B = q/(s+q)
+#         ge_model = GE_model(s, q, pi_B)
+    
+#     num_of_iter = 0
+#     num_defective_sampled = 0
+#     while num_defective_sampled != K:
+#         num_of_iter += 1
+#         channel_statef, _  = ge_model.sample_gilbert_elliot_channel(N, max_bad=K) 
+#         if channel_statef is None: 
+#             # there were too much good (bad after inversion) items
+#             continue
+#         num_defective_sampled = np.sum(channel_statef)
+#         U = np.zeros((1,N))
+#         U[0, :] = channel_statef
+#     if debug:
+#         print('num_of_iter (until U with K defectives found)', num_of_iter)
+#     return U, ge_model
 
 def test_sample_population_gilbert_elliot_channel():
-    N = 500
-    K = 10
+    N = 1024
+    K = 8
     ge_model = None
     U, _ = sample_population_gilbert_elliot_channel(N, K, ge_model, debug=True)
     # plt.figure()
@@ -373,20 +435,24 @@ def test_sample_population_gilbert_elliot_channel():
     print('participating_items', participating_items)
 
 def test_sample_population_gilbert_elliot_channel_count_bursts():
-    N = 500
-    K = 10
-    nmc = 500
+    N = 1024
+    K = 8
+    nmc = 1000
     count_num_of_bursts = np.zeros((nmc,))
+    count_defective_in_seq = np.zeros((nmc,))
     for nn in range(nmc):   
         ge_model = None
         U, _ = sample_population_gilbert_elliot_channel(N, K, ge_model, debug=False)
+        count_defective_in_seq[nn] = np.sum(U)
         participating_items = np.where(U == 1)[1]
         num_of_bursts = 1
         for ii,item in enumerate(participating_items[:-1]):
             if item != participating_items[ii+1] - 1:
                 num_of_bursts += 1
         count_num_of_bursts[nn] = num_of_bursts
-
+    plt.figure()
+    plt.hist(count_defective_in_seq)
+    plt.show()
     plt.figure()
     plt.hist(count_num_of_bursts)
     plt.xlabel('#bursts')
@@ -537,6 +603,32 @@ def test_sample_population_ISI_m1():
     plt.grid(True)
     plt.show()
     
+def test_number_of_defectives_in_gilbert_elliot():
+    N = 1024
+    K = 8
+    nmc = 100000
+    if K < 5:
+        b = 0.5
+    else:
+        b = 2
+    q = 1.2*b/N
+    s = b/K
+    pi_B = q/(s+q)
+    ge_model = GE_model(s, q, pi_B)
+    count_defectives = np.zeros((nmc,))
+
+    for nn in range(nmc):
+        channel_statef, _  = ge_model.sample_gilbert_elliot_channel(N) 
+        if channel_statef is None: 
+            # print('err?')
+            pass
+        else:
+            count_defectives[nn] = np.sum(channel_statef)
+    print('mean', np.mean(count_defectives))
+    print('var', np.var(count_defectives))
+    plt.figure()
+    plt.hist(count_defectives)
+    plt.show()
     
 if __name__ == '__main__':
     # sample_population_no_corr()
@@ -546,5 +638,6 @@ if __name__ == '__main__':
     # test_sample_population_gilbert_elliot_channel_hist()
     # tune_sample_population_gilbert_elliot_channel()
     # test_sample_population_gilbert_elliot_channel()
-    test_sample_population_gilbert_elliot_channel_count_bursts()
+    # test_sample_population_gilbert_elliot_channel_count_bursts()
+    test_number_of_defectives_in_gilbert_elliot()
     pass
