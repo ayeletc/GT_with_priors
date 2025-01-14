@@ -1,0 +1,8 @@
+scipy>=1.11.2
+numpy
+scikit-learn
+tqdm
+matplotlib
+audioop-lts
+pandas
+plotly
