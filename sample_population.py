@@ -376,6 +376,8 @@ def sample_population_gilbert_elliot_channel(N, K, ge_model, epsilon=0.01, debug
     
     num_of_iter = 0
     num_defective_sampled = 0
+    # TODO: This is a dangerous loop that can be infinite in the wrong circumstances.
+    # Consider having a for loop with timeout.
     while num_defective_sampled != K:
         num_of_iter += 1
         channel_statef, _  = ge_model.sample_gilbert_elliot_channel(N, max_bad=K) 
