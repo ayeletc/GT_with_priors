@@ -19,7 +19,7 @@ import scipy.io
 N                   = 500 # for Markov: N=500, K=3 ; N=1024, K=8; N=10000, K=13 
 vecK                = [3]#[6,8,10,12,14,16,18,20,22,24]
 nmc                 = 100000
-enlarge_tests_num_by_factors = [0.5, 0.6, 0.7,0.8,0.9,1.0]
+enlarge_tests_num_by_factors = [0.5] # [0.5, 0.6, 0.7,0.8,0.9,1.0]
 Tbaseline           = 'ML' # options: 'ML', 'lb_no_priors', 'lb_with_priors', 'GE'
 methods_DD          = ['Normal']#{'Normal', 'Sum'} # options: Normal, Iterative, Sum
 third_step_type     = 'viterbi+MAP' # options: ['MAP', 'MLE', 'MAP_for_GE_all_options', 'MAP_for_GE_stop_search', 'MAP_for_GE_use_sortedPw', 'viterbi', 'viterbi+MAP']
@@ -31,7 +31,7 @@ is_plot             = True
 do_third_step       = True
 is_sort_comb_by_priors = True
 add_dd_based_prior  = False
-debug_mode          = False 
+debug_mode          = True 
 plot_status_DD      = False
 
 ### probabilistic model config ###
@@ -123,7 +123,7 @@ for method_DD in methods_DD:
         ge_model = None
         markov_model = None
         if sample_method == 'GE': # create the ge model 
-            _, ge_model = sample_population_gilbert_elliot_channel(N, K, ge_model, debug=False)
+            _, ge_model = sample_population_gilbert_elliot_channel(N, K, ge_model, debug=debug_mode)
         elif sample_method == 'Markov':
             if N == 500:
                 _, markov_model = sample_population_for_N500_K3_ts3(N, K, markov_model)
@@ -178,7 +178,7 @@ for method_DD in methods_DD:
                 elif sample_method == 'indicative':
                     U, Pu, Pw, num_of_distractions = sample_population_indicative(N, K)
                 elif sample_method == 'GE':
-                    U, ge_model = sample_population_gilbert_elliot_channel(N, K, ge_model, debug=False)
+                    U, ge_model = sample_population_gilbert_elliot_channel(N, K, ge_model, debug=debug_mode)
                 elif sample_method == 'Markov':
                     U, markov_model = sample_population_for_N500_K3_ts3(N, K, markov_model)
                 true_defective_set = np.where(U == 1)[1].tolist()
