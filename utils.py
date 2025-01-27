@@ -6,6 +6,7 @@ from itertools import combinations
 import bisect 
 import zipfile
 import pickle
+from itertools import combinations
 
 
 def single_map(comb, N, DND1, DD2, X, Y, p, ge_model):
@@ -245,6 +246,36 @@ def convert_int_to_base(n, base):
         s = str(n%base) + s
         n = n//base
     return list(map(int, sign+s))
+
+def gen_infected_from_subset(defectives: set[int], K: int, N: int) -> frozenset[frozenset[int]]:
+    """
+    This function returns all combinations of K infected items out of N items, that include all of
+    the items in S.
+
+    Args:
+        defectives (set):
+            A set of frozen infected items.
+        K (int):
+            Total number of infected items.
+        N (int):
+            Total number of items.
+
+    Returns:
+        res (frozenset):
+            A set of all the sets of length K of infected items that contain all the elements of S. 
+    """
+    defectives = list(defectives)
+    
+    # Calculate the remaining elements that are not in S
+    remaining_elements = [i for i in range(N) if i not in defectives]
+    
+    # Generate all combinations of the remaining elements of length K - len(S)
+    combs = combinations(remaining_elements, K - len(defectives))
+    
+    # Add the elements of S to each combination and return the result as a set of sets
+    res = {frozenset(defectives + list(comb)) for comb in combs}
+    
+    return res
 
 if __name__ == '__main__':
     # db_path=r'/Users/ayelet/Library/CloudStorage/OneDrive-Technion/Alejandro/count_possibly_defected_results/shelve_raw/countPDandDD_N20_nmc500_methodDD_Sum_typical_Tbaseline_ML_02082022_224856.mat'
