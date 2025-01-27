@@ -2,16 +2,51 @@ import math
 import random
 import numpy as np
 from utils import *
+from settings import STATE
 from HMM import HMM
 
 
 class GE_model:
+    #TODO: Verify the docstring is correct
+    """
+    A Gilbert Elliott model.
+
+    Args:
+        s (float):
+            Transition probability 1->0
+        q (float):
+            Transition probability 0->1
+        pi_B (float):
+            Probability that the first item is 1.
+    """
     def __init__(self, s, q, pi_B):
         self.s = s
         self.q = q
         self.pi_B = pi_B
         self.probabilities_to_bad_dict = self.calc_conditional_probability_GE() 
         self.num_of_permutations = None
+        self._P = None
+
+    def _calc_P(self, N: int) -> tuple[np.ndarray, int]:
+        """
+        This function calculates the transition matrix P.
+        This matrix is used to calculate this GE process produces exactly K ones within N steps.
+        (See the paper for additional info).
+        It also returns the dimension 2(N+1).
+        """
+        dim = 2*(N+1)
+        P = np.zeros((dim,dim))
+        for row in range(dim-2): #The last two rows are final states
+            if row==1: #Corresponds to 0' which is a dummy state
+                continue
+            if row%2==0: #non-prime states
+                P[row, row] = 1-self.q
+                P[row, row+3] = self.q
+            else:
+                P[row, row-1] = self.s
+                P[row, row+1] = 1-self.s
+        return P, dim
+
 
     def calculate_num_of_permutations_by_entropy(self, K, T, nPD):
         p = np.log(2) / K
@@ -29,7 +64,50 @@ class GE_model:
         # entropy_error_COMA = -qi * np.log2(qi) - (1-qi) * np.log2(1-qi)
         entropy_error_COMA = -prob_error_COMA * np.log2(prob_error_COMA) - (1-prob_error_COMA) * np.log2(1-prob_error_COMA)
         self.num_of_permutations = np.ceil(2 ** (T * entropy_error_COMA)).astype(np.int64)
-        
+
+    def to_zero(self, curr_state: STATE) -> tuple[float, STATE]:
+        """
+        This function returns the probability to move to a zero state.
+
+        Args:
+            curr_state (STATE):
+                Current state (0 or 1).
+
+        Returns:
+            prob (float):
+                The probability.
+            next_state (STATE):
+                The new state of the system (0).
+        """
+        if curr_state==STATE.CURR_NONE:
+            prob = 1-self.pi_B
+        elif curr_state==STATE.CURR_ZERO:
+            prob = 1-self.q
+        elif curr_state==STATE.CURR_ONE:
+            prob = self.s
+        return prob, STATE.CURR_ZERO
+
+    def to_one(self, curr_state: STATE) -> tuple[float, STATE]:
+        """
+        This function returns the probability to move to a one state.
+
+        Args:
+            curr_state (STATE):
+                Current state (0 or 1).
+
+        Returns:
+            prob (float):
+                The probability.
+            next_state (STATE):
+                The new state of the system (1).
+        """
+        if curr_state==STATE.CURR_NONE:
+            prob = self.pi_B
+        elif curr_state==STATE.CURR_ZERO:
+            prob = self.q
+        elif curr_state==STATE.CURR_ONE:
+            prob = 1-self.s
+        return prob, STATE.CURR_ONE
 
     def sample_gilbert_elliot_channel(self, N, max_bad=np.inf):
         # for GT with fixed num of K : if there are more than max_bad bad items, return false and don't complete the chain
@@ -67,7 +145,6 @@ class GE_model:
                 if num_of_bad > max_bad:
                     return None, None
         return 1-channel_statef,1-channel_stater
-
 
     def calc_conditional_probability_GE(self):
         probabilities_to_bad_dict = {}
@@ -226,15 +303,6 @@ class GE_model:
         Pw = np.prod(probability_per_item)
         return Pw
     
-    # def calc_Pw_long_memory(self, ts, N, init_prob, permute, DD2, DND1):
-    #     permute = list(permute) + DD2
-        
-    #     # calc initial prob
-    #     # Pw = init_prob[]
-    #     # calc next
-
-    #     return Pw
-    
     def model_as_hmm(self, K, T, nPD, p, ver_states=True):
         if ver_states:
             states = np.array(['non_defective', 'defective'])
@@ -303,7 +371,6 @@ class GE_model:
 
         return HMM(states=states_binary, init_prob=init_prob, trans_mat=trans_mat, ts=ts, trans_mat_1step=hmm_1ts.trans_mat, emit_mat=None)
 
-
     def model_as_hmm_with_2_steps_memory(self, K, T, nPD, p):
         states = np.array(['non_defective | non_defective', 'non_defective | defective', 
                             'defective | non_defective', 'defective | defective'])
@@ -331,7 +398,6 @@ class GE_model:
                         init_prob_1step=init_prob_1step, trans_mat_1step=trans_mat_1step, emit_mat=None)
         return hmm_model
 
-    
     def parse_2step_to_1step(self, seq_2step):
         n2 = seq_2step.shape[0]
         n1 = int(n2*2)
@@ -339,6 +405,122 @@ class GE_model:
         for ii in range(n2):
             seq_1step[ii*2:ii*2+2] = convert_int_to_base(seq_2step[ii], 2)
         return seq_1step
+
+    def calc_permutation_prob(self, defectives: set[int] | frozenset[int], N: int) -> float:
+        """
+        This function calculates the probability that this GE model results in this defectives list.
+        Namely, it calculates P_W(defectives) (see the paper).
+
+        Args:
+            defectives (set[int]):
+                A set of defective items.
+                The items are 0-indexed.
+            N (int):
+                Total number of items.
+        
+        Returns:
+            res (float):
+                The probability this GE model results in these defective items.
+        """
+        res = 1
+        if not defectives:
+            return res
+        
+        curr_state = STATE.CURR_NONE
+        for i in range(N):
+            prob, curr_state = self.to_one(curr_state) if i in defectives else self.to_zero(curr_state)
+            res *= prob
+        return res
+    
+    def calc_sub_permutation_prob(self, defectives: set[int], K: int, N: int) -> float:
+        """
+        This function calculates the probability that a subgroup of defectives are defectives.
+        It marginalizes over the other K-|defectives| possible set of defectives.
+        Namely, it calculates P_W(S1) (see the paper).
+
+        Args:
+            defectives (set[int]):
+                A set of defective items.
+                The items are 0-indexed.
+                Does not have to be of size K.
+            K (int):
+                Total number of infected items.
+            N (int):
+                Total number of items.
+
+        Returns:
+            res (float):
+                The probability this GE model results in this subset of defective items.
+        """
+        all_defectives = gen_infected_from_subset(defectives, K, N)
+        res = 0
+        for curr_defective in all_defectives:
+            res += self.calc_permutation_prob(curr_defective, N)
+        return res
+    
+    def calc_total_ones_prob(self, K: int, N: int) -> float:
+        """
+        This function calculates the probability that this GE model produces exactlty K ones within N steps.
+        """
+        if K>N or N<=0:
+            return 0
+        P, dim = self._calc_P(N)
+        init_dist = np.zeros(dim)
+        init_dist[0] = 1-self.pi_B
+        init_dist[3] = self.pi_B
+        final_dist = init_dist@np.linalg.matrix_power(P, N-1)
+        return final_dist[2*K] + final_dist[2*K+1]
+        
+    def calc_entropy_s2_given_s1(self, K: int, N: int, i: int, parallel: bool=False):
+        """
+        This function calcluates H(P_{S_2|S_1}).
+
+        Args:
+            K (int):
+                Number of infected items.
+            N (int):
+                Total number of items.
+            i (int):
+                Error number (see the paper for further details).
+            parallel (bool):
+                If True, runs in parallel mode on all available CPUs.
+        
+        Returns:
+            res (float):
+                The desired entropy.
+        """
+        def _inner_loop(self, S1: set[int], S1_S2: set[int]) -> float:
+            """
+            Calculates the inner sum of the loop.
+            """
+            P_S1_S2 = self.calc_permutation_prob(defectives=(S1_S2), N=N)
+            P_S1 = self.calc_sub_permutation_prob(defectives=S1, K=K, N=N)
+            return P_S1_S2*np.log2(P_S1/P_S1_S2)
+
+        if parallel:
+            from joblib import Parallel, delayed
+            results = Parallel(n_jobs=-1)(
+                delayed(_inner_loop)(S1, S1_S2)
+                for S1 in gen_infected_from_subset(defectives={}, K=K-i, N=N)
+                for S1_S2 in gen_infected_from_subset(defectives=S1, K=K, N=N))
+            res = sum(results)
+        else:
+            res = 0
+            for S1 in gen_infected_from_subset(defectives={}, K=K-i, N=N):
+                for S1_S2 in gen_infected_from_subset(defectives=S1, K=K, N=N):
+                    res += _inner_loop(self, S1, S1_S2)
+        return res
+
+
+    # def calc_Pw_long_memory(self, ts, N, init_prob, permute, DD2, DND1):
+    
+    #     permute = list(permute) + DD2
+        
+    #     # calc initial prob
+    #     # Pw = init_prob[]
+    #     # calc next
+
+    #     return Pw
 
     if __name__ == '__main__':
         pass
