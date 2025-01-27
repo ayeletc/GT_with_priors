@@ -7,3 +7,7 @@
 
 ## Activation
 The main script is `multi_stage_algo.py`.
+
+To calculate the GT bound, run `calc_bounds.py`.
+
+TODO: Add CI/CD
