@@ -12,11 +12,11 @@ from sample_population import *
 from plotters import *
 from calc_bounds_and_num_of_tests import *
 from Markov_model import *
-import scipy.io
+import scipy.iosave_path
 
 
 #%% Config simulation
-N                   = 500 # for Markov: N=500, K=3 ; N=1024, K=8; N=10000, K=13 
+N                   = 100 # for Markov: N=500, K=3 ; N=1024, K=8; N=10000, K=13 
 vecK                = [3]#[6,8,10,12,14,16,18,20,22,24]
 nmc                 = 100000
 enlarge_tests_num_by_factors = [0.5] # [0.5, 0.6, 0.7,0.8,0.9,1.0]
@@ -31,7 +31,7 @@ is_plot             = True
 do_third_step       = True
 is_sort_comb_by_priors = True
 add_dd_based_prior  = False
-debug_mode          = True 
+debug_mode          = False 
 plot_status_DD      = False
 
 ### probabilistic model config ###
@@ -133,6 +133,7 @@ for method_DD in methods_DD:
                 _, markov_model = sample_population_for_N10000_K13_ts3(N, K, markov_model)
             else:
                 print('Sampling method is not defined for the given N,K')
+
         vecT = calculate_vecT_for_K(K, N, enlarge_tests_num_by_factors, Tbaseline=Tbaseline, Pe=Pe, 
                     sample_method=sample_method, ge_model=ge_model, Pu=None, coeff_mat=None)
         vecTs.append(vecT)
@@ -642,7 +643,7 @@ for method_DD in methods_DD:
         time_str = datetime.now().strftime("%d%m%Y_%H%M%S")
         experiment_str = sample_method + '_N' + str(N) + '_K1_' + str(vecK[0]) + '_nmc' + str(nmc) + '_methodDD_' + method_DD + permutations_label + '_thirdStep_' + third_step_label + viterbi_label + '_' + code_type + '_Tbaseline_' +  Tbaseline + '_'
         results_dir_path = os.path.join(save_path, 'countPDandDD_' + experiment_str + time_str)
-        os.mkdir(results_dir_path)
+        os.makedirs(results_dir_path)
 
 # %%
 
@@ -671,4 +672,5 @@ for method_DD in methods_DD:
         save_workspace(results_dir_path, variables_to_save, globals())
         save_code_dir(results_dir_path)
 
- 
+#%%
+pass
