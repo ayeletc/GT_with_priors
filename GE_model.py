@@ -47,7 +47,6 @@ class GE_model:
                 P[row, row+1] = 1-self.s
         return P, dim
 
-
     def calculate_num_of_permutations_by_entropy(self, K, T, nPD):
         p = np.log(2) / K
         # prob_error_DD = 1-p*(1-p)**(nPD-1)
@@ -423,8 +422,8 @@ class GE_model:
                 The probability this GE model results in these defective items.
         """
         res = 1
-        if not defectives:
-            return res
+        # if not defectives:
+        #     return res
         
         curr_state = STATE.CURR_NONE
         for i in range(N):
@@ -470,8 +469,34 @@ class GE_model:
         init_dist[3] = self.pi_B
         final_dist = init_dist@np.linalg.matrix_power(P, N-1)
         return final_dist[2*K] + final_dist[2*K+1]
+
+    def calc_entropy_num_combinations(self, K: int, N: int, i: int | None) -> int:
+        """
+        This function returns the number of combinations of different S1 and S2.
+        This is the number of times the inner loop of calc_entropy_s2_given_s1 is called.
+        This is the most expensive function for calculating the bound.
+        If i is None, returns the sum of i=1,2,...,K.
+        """
+
+        def _calc_entropy_num_combinations_i(K: int, N: int, i: int) -> int:
+            """
+            This is a helper function that returns the number of combinations for a specific i.
+            """
+            S1_set = gen_infected_from_subset(defectives={}, K=K-i, N=N)
+            S2_set = gen_infected_from_subset(defectives=next(iter(S1_set)), K=K, N=N)
+            return len(S1_set)*len(S2_set)
         
-    def calc_entropy_s2_given_s1(self, K: int, N: int, i: int, parallel: bool=False):
+        #Calculate for a specific i
+        if i is not None:
+            return _calc_entropy_num_combinations_i(K=K, N=N, i=i)
+        
+        #Calculate the sum of i=1,...,K.
+        res = 0
+        for i in range(1, K+1):
+            res += _calc_entropy_num_combinations_i(K=K, N=N, i=i)
+        return res
+
+    def calc_entropy_s2_given_s1(self, K: int, N: int, i: int, parallel: bool=False) -> float:
         """
         This function calcluates H(P_{S_2|S_1}).
 
