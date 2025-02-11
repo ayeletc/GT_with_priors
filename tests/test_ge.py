@@ -37,12 +37,20 @@ class TestGEIndividualProbabilities(unittest.TestCase):
         self.ge = GE_model(self.s, self.q, self.pi_B)
 
     def test_K_1(self):
-        K = 1
         N = 10
-        #TODO: Finish this test.
+        
+        #Analytical calculation
+        pr_start_1 = self.pi_B*self.s * ((1-self.q)**(N-2))
+        pr_end_1 = (1-self.pi_B) * ((1-self.q)**(N-2)) * self.q
+        pr_others = (N-2)*((1-self.pi_B) * self.q * ((1-self.q)**(N-3)) * self.s)
+        expected =  pr_start_1+pr_others+pr_end_1
+        
+        #Code calculation
+        calculated = sum([self.ge.calc_permutation_prob(defectives=[curr_set], N=N) for curr_set in range(N)])
+        self.assertAlmostEqual(expected, calculated)
 
     def test_sum_to_one(self):
-        N = 3
+        N = 4
         all_sets = all_subsets(N)
         res = sum([self.ge.calc_permutation_prob(defectives=curr_set, N=N) for curr_set in all_sets])
         self.assertAlmostEqual(res, 1.0)
