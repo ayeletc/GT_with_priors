@@ -2,7 +2,7 @@ import os
 from math import perm
 import numpy as np
 from scipy.io import savemat, loadmat
-from itertools import combinations
+from itertools import combinations, chain
 import bisect 
 import zipfile
 import pickle
@@ -276,6 +276,13 @@ def gen_infected_from_subset(defectives: set[int], K: int, N: int) -> frozenset[
     res = {frozenset(defectives + list(comb)) for comb in combs}
     
     return res
+
+def all_subsets(N: int):
+    """
+    This function returns all subsets (of any size) of from {1, ..., N}.
+    """
+    s = set(range(N))
+    return list(chain(*map(lambda x: combinations(s, x), range(0, len(s)+1))))
 
 if __name__ == '__main__':
     # db_path=r'/Users/ayelet/Library/CloudStorage/OneDrive-Technion/Alejandro/count_possibly_defected_results/shelve_raw/countPDandDD_N20_nmc500_methodDD_Sum_typical_Tbaseline_ML_02082022_224856.mat'

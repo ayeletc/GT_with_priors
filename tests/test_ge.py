@@ -1,6 +1,8 @@
 import unittest
+from itertools import chain, combinations
 
 from GE_model import GE_model
+from utils import all_subsets
 
 class TestGETotalProbabilities(unittest.TestCase):
     def setUp(self):
@@ -20,7 +22,6 @@ class TestGETotalProbabilities(unittest.TestCase):
         expected = self.pi_B
         self._test_prob(K=K, N=N, expected=expected)
 
-
     def test_N_2(self):
         K = 1
         N = 2
@@ -39,3 +40,9 @@ class TestGEIndividualProbabilities(unittest.TestCase):
         K = 1
         N = 10
         #TODO: Finish this test.
+
+    def test_sum_to_one(self):
+        N = 3
+        all_sets = all_subsets(N)
+        res = sum([self.ge.calc_permutation_prob(defectives=curr_set, N=N) for curr_set in all_sets])
+        self.assertAlmostEqual(res, 1.0)
