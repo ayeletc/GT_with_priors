@@ -671,6 +671,3 @@ for method_DD in methods_DD:
         variables_to_save = [var for var in all_variables_names if var not in dont_include_variables]
         save_workspace(results_dir_path, variables_to_save, globals())
         save_code_dir(results_dir_path)
-
-#%%
-pass
