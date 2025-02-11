@@ -1,5 +1,6 @@
 import argparse
 import time
+import numpy as np
 
 from sample_population import sample_population_gilbert_elliot_channel
 
@@ -21,6 +22,8 @@ if __name__=="__main__":
 
     print(f"K={K}, N={N}, eps={eps}")
     _, ge_model = sample_population_gilbert_elliot_channel(N, K, None, debug=debug)
+    total_num_combinations = ge_model.calc_entropy_num_combinations(K=K, N=N, i=None)
+    print(f"N={N}, K={K}: The total number of combinations = {total_num_combinations}, and log10={np.log10(total_num_combinations)}")
     bound = max([(1+eps)*(K/i)*ge_model.calc_entropy_s2_given_s1(K=K, N=N, i=i) for i in range(1,K+1)])
     end_time = time.time()
     elapsed = end_time-start_time
