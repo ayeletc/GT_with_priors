@@ -520,7 +520,7 @@ class GE_model:
             """
             P_S1_S2 = self.calc_permutation_prob(defectives=(S1_S2), N=N)
             P_S1 = self.calc_sub_permutation_prob(defectives=S1, K=K, N=N)
-            return P_S1_S2*np.log2(P_S1/P_S1_S2)
+            return P_S1_S2*np.log2(P_S1/P_S1_S2), P_S1_S2
 
         if parallel:
             from joblib import Parallel, delayed
@@ -528,13 +528,16 @@ class GE_model:
                 delayed(_inner_loop)(S1, S1_S2)
                 for S1 in gen_infected_from_subset(defectives={}, K=K-i, N=N)
                 for S1_S2 in gen_infected_from_subset(defectives=S1, K=K, N=N))
-            res = sum(results)
+            res, sum_P_S1_S2 = map(sum, zip(*results))
         else:
             res = 0
+            sum_P_S1_S2 = 0
             for S1 in gen_infected_from_subset(defectives={}, K=K-i, N=N):
                 for S1_S2 in gen_infected_from_subset(defectives=S1, K=K, N=N):
-                    res += _inner_loop(self, S1, S1_S2)
-        return res
+                    curr_res, P_S1_S2 = _inner_loop(self, S1, S1_S2)
+                    res += curr_res
+                    sum_P_S1_S2 += P_S1_S2
+        return res/sum_P_S1_S2
 
 
     # def calc_Pw_long_memory(self, ts, N, init_prob, permute, DD2, DND1):
