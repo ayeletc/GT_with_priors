@@ -537,7 +537,7 @@ class GE_model:
                     curr_res, P_S1_S2 = _inner_loop(self, S1, S1_S2)
                     res += curr_res
                     sum_P_S1_S2 += P_S1_S2
-        return res/sum_P_S1_S2
+        return res/(sum_P_S1_S2/math.comb(K,i))
 
 
     # def calc_Pw_long_memory(self, ts, N, init_prob, permute, DD2, DND1):
