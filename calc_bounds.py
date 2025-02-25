@@ -17,6 +17,7 @@ if __name__=="__main__":
     parser.add_argument("--debug", dest="debug", action="store_true", help="If True, run in debug mode.")
     parser.add_argument("--exec_mode", type=str, default="sequential", help="Execution mode. Options: 'sequential', 'parallel_joblib', 'parallel_slurm'. Default: 'sequential'.")
     parser.add_argument("--temp_res_dir", type=str, help="Where to save temporary SLURM files. Must be passed if running in SLURM mode.", default="")
+    parser.add_argument("--qos", type=str, help="QoS for SLURM scripts.", default="")
     args = parser.parse_args()
 
     K = args.K
@@ -28,6 +29,7 @@ if __name__=="__main__":
     debug = args.debug
     exec_mode = convert_to_exec_mode(args.exec_mode)
     temp_res_dir = args.temp_res_dir
+    qos = args.qos
 
     if temp_res_dir:
         os.makedirs(temp_res_dir, exist_ok=True)
@@ -39,7 +41,7 @@ if __name__=="__main__":
         ge_model.s = s
     ge_model.pi_B = pi_B
     print(f"Converse bound (with Pe=0) is {ge_model.calculate_lower_bound_GE(N)}.")
-    bound = max([(1+eps)*(K/i)*ge_model.calc_entropy_s2_given_s1(K=K, N=N, i=i, exec_mode=exec_mode, temp_res_dir=temp_res_dir) for i in range(1,K+1)])
+    bound = max([(1+eps)*(K/i)*ge_model.calc_entropy_s2_given_s1(K=K, N=N, i=i, exec_mode=exec_mode, temp_res_dir=temp_res_dir, qos=qos) for i in range(1,K+1)])
     end_time = time.time()
     elapsed = end_time-start_time
     print(f"The bound (without epsilon) is {bound}.")

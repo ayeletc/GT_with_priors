@@ -505,7 +505,7 @@ class GE_model:
             res += _calc_entropy_num_combinations_i(K=K, N=N, i=i)
         return res
 
-    def _calc_all_p_s1_s2(self, K: int, N: int, i: int, temp_res_dir: str, max_jobs: int) -> None:
+    def _calc_all_p_s1_s2(self, K: int, N: int, i: int, temp_res_dir: str, max_jobs: int, qos: str) -> None:
         """
         This helper function generates all P_S1_S2, and stores the results in temp_res_dir.
         It does that in parallel by calling multiple SLURM scripts - no more than max_jobs at a time.
@@ -516,9 +516,9 @@ class GE_model:
                 if os.path.exists(fname): #P_S1_S2 already calculated - nothing to do
                     continue
                 wait_for_available_job(max_jobs=max_jobs)
-                calc_perm_slurm(S=S1_S2, temp_res_dir=temp_res_dir, N=N, s=self.s, q=self.q, pi_B=self.pi_B)
+                calc_perm_slurm(S=S1_S2, temp_res_dir=temp_res_dir, N=N, s=self.s, q=self.q, pi_B=self.pi_B, qos=qos)
 
-    def calc_entropy_s2_given_s1(self, K: int, N: int, i: int, exec_mode: ExecutionMode = ExecutionMode.SEQUENTIAL, temp_res_dir: str = "") -> float:
+    def calc_entropy_s2_given_s1(self, K: int, N: int, i: int, exec_mode: ExecutionMode = ExecutionMode.SEQUENTIAL, temp_res_dir: str = "", qos="") -> float:
         """
         TODO: Update the docstring
         This function calcluates H(P_{S_2|S_1}).
@@ -547,7 +547,7 @@ class GE_model:
 
         if exec_mode is ExecutionMode.PARALLEL_SLURM:
             #Generate all possibilities of P_S1_S2
-            self._calc_all_p_s1_s2(K=K, N=N, i=i, temp_res_dir=temp_res_dir, max_jobs=MAX_SLURM_JOBS)
+            self._calc_all_p_s1_s2(K=K, N=N, i=i, temp_res_dir=temp_res_dir, max_jobs=MAX_SLURM_JOBS, qos=qos)
 
         if exec_mode is ExecutionMode.PARALLEL_JOBLIB:
             from joblib import Parallel, delayed

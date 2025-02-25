@@ -33,7 +33,7 @@ def S_str_to_fname(S: frozenset, temp_res_dir: str) -> str:
     S_str = set_to_str(S)
     return os.path.join(temp_res_dir, f"{S_str}.txt")
 
-def calc_perm_slurm(S: frozenset, temp_res_dir: str, N: int, s: float, q: float, pi_B: float, time_min: int = 10):
+def calc_perm_slurm(S: frozenset, temp_res_dir: str, N: int, s: float, q: float, pi_B: float, qos: str, time_min: int = 10):
     """
     This function runs a SLURM job that will calculate calc_permutation_prob_standalone.
     It returns the path to the SLURM script.
@@ -50,7 +50,7 @@ def calc_perm_slurm(S: frozenset, temp_res_dir: str, N: int, s: float, q: float,
     # calc_permutation_prob_standalone(S_str, N, s, q, pi_B, fname_res)
 
 
-    command = f'''sbatch --parsable --job-name="{S_str}" --time={time_min} --wrap="python -m calc_permutation_prob_standalone --S_str {S_str} --N {N} --q {q} --s {s} --pi_B {pi_B} --fname_res {fname_res}" --output {fname_out} --error {fname_err}'''
+    command = f'''sbatch --parsable --job-name="{S_str}" --qos="{qos}" --time={time_min} --nodes=1 --ntasks=1 --wrap="python -m calc_permutation_prob_standalone --S_str {S_str} --N {N} --q {q} --s {s} --pi_B {pi_B} --fname_res {fname_res}" --output {fname_out} --error {fname_err}'''
     std = subprocess.run(command, shell=True, capture_output=True)
     if std.stderr.decode('UTF-8'):
         print(f"Warning! Error {std.stderr.decode('UTF-8')} in S_str={S_str}.")
