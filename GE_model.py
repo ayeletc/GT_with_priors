@@ -1,10 +1,12 @@
+import time
 import math
 import random
 import numpy as np
 from utils import *
-from settings import STATE
+from settings import STATE, MAX_SLURM_JOBS
 from HMM import HMM
-
+from slurm_util import S_str_to_fname, wait_for_available_job, calc_perm_slurm
+from typing import Union
 
 class GE_model:
     #TODO: Verify the docstring is correct
@@ -405,7 +407,7 @@ class GE_model:
             seq_1step[ii*2:ii*2+2] = convert_int_to_base(seq_2step[ii], 2)
         return seq_1step
 
-    def calc_permutation_prob(self, defectives: set[int] | frozenset[int], N: int) -> float:
+    def calc_permutation_prob(self, defectives: Union[set[int], frozenset[int]], N: int, exec_mode: ExecutionMode, temp_res_dir: str) -> float:
         """
         This function calculates the probability that this GE model results in this defectives list.
         Namely, it calculates P_W(defectives) (see the paper).
@@ -421,17 +423,24 @@ class GE_model:
             res (float):
                 The probability this GE model results in these defective items.
         """
-        res = 1
-        # if not defectives:
-        #     return res
-        
-        curr_state = STATE.CURR_NONE
-        for i in range(N):
-            prob, curr_state = self.to_one(curr_state) if i in defectives else self.to_zero(curr_state)
-            res *= prob
+        if exec_mode is ExecutionMode.PARALLEL_SLURM: #This should have been calculated already
+            fname_res = S_str_to_fname(defectives, temp_res_dir)
+            while not os.path.exists(fname_res):
+                time.sleep(10)
+            with open(fname_res, 'r') as f:
+                res = float(f.read().strip())
+        else: #Calculate from scratch
+            res = 1
+            # if not defectives:
+            #     return res
+            
+            curr_state = STATE.CURR_NONE
+            for i in range(N):
+                prob, curr_state = self.to_one(curr_state) if i in defectives else self.to_zero(curr_state)
+                res *= prob
         return res
     
-    def calc_sub_permutation_prob(self, defectives: set[int], K: int, N: int) -> float:
+    def calc_sub_permutation_prob(self, defectives: set[int], K: int, N: int, exec_mode: ExecutionMode, temp_res_dir: str) -> float:
         """
         This function calculates the probability that a subgroup of defectives are defectives.
         It marginalizes over the other K-|defectives| possible set of defectives.
@@ -454,7 +463,7 @@ class GE_model:
         all_defectives = gen_infected_from_subset(defectives, K, N)
         res = 0
         for curr_defective in all_defectives:
-            res += self.calc_permutation_prob(curr_defective, N)
+            res += self.calc_permutation_prob(curr_defective, N, exec_mode=exec_mode, temp_res_dir=temp_res_dir)
         return res
     
     def calc_total_ones_prob(self, K: int, N: int) -> float:
@@ -470,7 +479,7 @@ class GE_model:
         final_dist = init_dist@np.linalg.matrix_power(P, N-1)
         return final_dist[2*K] + final_dist[2*K+1]
 
-    def calc_entropy_num_combinations(self, K: int, N: int, i: int | None) -> int:
+    def calc_entropy_num_combinations(self, K: int, N: int, i: Union[int, None]) -> int:
         """
         This function returns the number of combinations of different S1 and S2.
         This is the number of times the inner loop of calc_entropy_s2_given_s1 is called.
@@ -496,8 +505,22 @@ class GE_model:
             res += _calc_entropy_num_combinations_i(K=K, N=N, i=i)
         return res
 
-    def calc_entropy_s2_given_s1(self, K: int, N: int, i: int, parallel: bool=False) -> float:
+    def _calc_all_p_s1_s2(self, K: int, N: int, i: int, temp_res_dir: str, max_jobs: int) -> None:
         """
+        This helper function generates all P_S1_S2, and stores the results in temp_res_dir.
+        It does that in parallel by calling multiple SLURM scripts - no more than max_jobs at a time.
+        """
+        for S1 in gen_infected_from_subset(defectives={}, K=K-i, N=N):
+            for S1_S2 in gen_infected_from_subset(defectives=S1, K=K, N=N):
+                fname = S_str_to_fname(S=S1_S2, temp_res_dir=temp_res_dir)
+                if os.path.exists(fname): #P_S1_S2 already calculated - nothing to do
+                    continue
+                wait_for_available_job(max_jobs=max_jobs)
+                calc_perm_slurm(S=S1_S2, temp_res_dir=temp_res_dir, N=N, s=self.s, q=self.q, pi_B=self.pi_B)
+
+    def calc_entropy_s2_given_s1(self, K: int, N: int, i: int, exec_mode: ExecutionMode = ExecutionMode.SEQUENTIAL, temp_res_dir: str = "") -> float:
+        """
+        TODO: Update the docstring
         This function calcluates H(P_{S_2|S_1}).
 
         Args:
@@ -514,27 +537,31 @@ class GE_model:
             res (float):
                 The desired entropy.
         """
-        def _inner_loop(self, S1: set[int], S1_S2: set[int]) -> float:
+        def _inner_loop(self, S1: set[int], S1_S2: set[int], exec_mode: ExecutionMode, temp_res_dir: str) -> float:
             """
             Calculates the inner sum of the loop.
             """
-            P_S1_S2 = self.calc_permutation_prob(defectives=(S1_S2), N=N)
-            P_S1 = self.calc_sub_permutation_prob(defectives=S1, K=K, N=N)
+            P_S1_S2 = self.calc_permutation_prob(defectives=(S1_S2), N=N, exec_mode=exec_mode, temp_res_dir=temp_res_dir)
+            P_S1 = self.calc_sub_permutation_prob(defectives=S1, K=K, N=N, exec_mode=exec_mode, temp_res_dir=temp_res_dir)
             return P_S1_S2*np.log2(P_S1/P_S1_S2), P_S1_S2
 
-        if parallel:
+        if exec_mode is ExecutionMode.PARALLEL_SLURM:
+            #Generate all possibilities of P_S1_S2
+            self._calc_all_p_s1_s2(K=K, N=N, i=i, temp_res_dir=temp_res_dir, max_jobs=MAX_SLURM_JOBS)
+
+        if exec_mode is ExecutionMode.PARALLEL_JOBLIB:
             from joblib import Parallel, delayed
             results = Parallel(n_jobs=-1)(
-                delayed(_inner_loop)(S1, S1_S2)
+                delayed(_inner_loop)(S1, S1_S2, exec_mode, temp_res_dir)
                 for S1 in gen_infected_from_subset(defectives={}, K=K-i, N=N)
                 for S1_S2 in gen_infected_from_subset(defectives=S1, K=K, N=N))
             res, sum_P_S1_S2 = map(sum, zip(*results))
-        else:
+        elif exec_mode is ExecutionMode.SEQUENTIAL or exec_mode is ExecutionMode.PARALLEL_SLURM:
             res = 0
             sum_P_S1_S2 = 0
             for S1 in gen_infected_from_subset(defectives={}, K=K-i, N=N):
                 for S1_S2 in gen_infected_from_subset(defectives=S1, K=K, N=N):
-                    curr_res, P_S1_S2 = _inner_loop(self, S1, S1_S2)
+                    curr_res, P_S1_S2 = _inner_loop(self, S1, S1_S2, exec_mode, temp_res_dir=temp_res_dir)
                     res += curr_res
                     sum_P_S1_S2 += P_S1_S2
         return res/(sum_P_S1_S2/math.comb(K,i))

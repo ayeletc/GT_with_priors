@@ -7,7 +7,25 @@ import bisect
 import zipfile
 import pickle
 from itertools import combinations
+from enum import Enum
 
+class ExecutionMode(Enum):
+    SEQUENTIAL = 1
+    PARALLEL_JOBLIB = 2
+    PARALLEL_SLURM = 3
+
+def convert_to_exec_mode(exec_mode: str) -> ExecutionMode:
+    """
+    This is a helper function that converts exec_mode from string to Enum.
+    """
+    if exec_mode=="sequential":
+        return ExecutionMode.SEQUENTIAL
+    elif exec_mode=="parallel_joblib":
+        return ExecutionMode.PARALLEL_JOBLIB
+    elif exec_mode=="parallel_slurm":
+        return ExecutionMode.PARALLEL_SLURM
+    else:
+        raise ValueError(f"Unknown execution mode {exec_mode}.")
 
 def single_map(comb, N, DND1, DD2, X, Y, p, ge_model):
     comb = comb.tolist()
