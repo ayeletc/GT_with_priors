@@ -194,9 +194,19 @@ class GE_model:
     def calculate_lower_bound_GE(self, N, Pe=0.0):
         # calculate lb by joint entropy
         # H[U1,...,UN] = H(U1)+H(U2|U1)+...+H(UN|UN-1)
-        return self.calculate_entropy(N) * (1-Pe)
-        # lb = 0
-        # for ii in range(1,N):
+
+        assert self.pi_B==self.q/(self.q+self.s), f"Calculating the lower bound of the entropy currently assumes steady state."
+
+        addend = lambda p_x_y, p_x: p_x_y*np.log2(p_x_y/p_x)
+        H_U1 = -(self.pi_B*np.log2(self.pi_B) + (1-self.pi_B)*np.log2(1-self.pi_B))
+        H_Ui_Ui_1 = -(  
+                        addend((1-self.pi_B)*(1-self.q), 1-self.pi_B)  + \
+                        addend(self.pi_B*self.s, self.pi_B) + \
+                        addend((1-self.pi_B)*self.q, 1-self.pi_B) + \
+                        addend(self.pi_B*(1-self.s), self.pi_B)
+                    )
+        return H_U1 + (N-1)*H_Ui_Ui_1
+        # return self.calculate_entropy(N) * (1-Pe)
 
     def calculate_entropy2(self, N, K):
         H = lambda x: -x*np.log2(x)-(1-x)*np.log2(1-x)

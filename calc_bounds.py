@@ -39,7 +39,7 @@ if __name__=="__main__":
         ge_model.s = s
     pi_B = ge_model.q/(ge_model.q+ge_model.s)
     ge_model.pi_B = pi_B
-    print(f"K={K}, N={N}, eps={eps}, q={q}, s={s}, pi={pi_B}")
+    print(f"K={K}, N={N}, eps={eps}, q={ge_model.q}, s={ge_model.s}, pi={ge_model.pi_B}")
     print(f"Converse bound (with Pe=0) is {ge_model.calculate_lower_bound_GE(N)}.")
     bound = max([(1+eps)*(K/i)*ge_model.calc_entropy_s2_given_s1(K=K, N=N, i=i, exec_mode=exec_mode, temp_res_dir=temp_res_dir, qos=qos) for i in range(1,K+1)])
     end_time = time.time()
