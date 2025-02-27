@@ -25,7 +25,6 @@ if __name__=="__main__":
     eps = args.eps
     q = args.q
     s = args.s
-    pi_B = q/(q+s)
     debug = args.debug
     exec_mode = convert_to_exec_mode(args.exec_mode)
     temp_res_dir = args.temp_res_dir
@@ -33,13 +32,14 @@ if __name__=="__main__":
 
     if temp_res_dir:
         os.makedirs(temp_res_dir, exist_ok=True)
-    print(f"K={K}, N={N}, eps={eps}, q={q}, s={s}, pi={pi_B}")
     _, ge_model = sample_population_gilbert_elliot_channel(N, K, None, debug=debug)
     if q>=0:
         ge_model.q = q
     if s>=0:
         ge_model.s = s
+    pi_B = ge_model.q/(ge_model.q+ge_model.s)
     ge_model.pi_B = pi_B
+    print(f"K={K}, N={N}, eps={eps}, q={q}, s={s}, pi={pi_B}")
     print(f"Converse bound (with Pe=0) is {ge_model.calculate_lower_bound_GE(N)}.")
     bound = max([(1+eps)*(K/i)*ge_model.calc_entropy_s2_given_s1(K=K, N=N, i=i, exec_mode=exec_mode, temp_res_dir=temp_res_dir, qos=qos) for i in range(1,K+1)])
     end_time = time.time()
