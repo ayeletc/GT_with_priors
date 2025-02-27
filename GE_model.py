@@ -562,7 +562,7 @@ class GE_model:
         if exec_mode is ExecutionMode.PARALLEL_JOBLIB:
             from joblib import Parallel, delayed
             results = Parallel(n_jobs=-1)(
-                delayed(_inner_loop)(S1, S1_S2, exec_mode, temp_res_dir)
+                delayed(_inner_loop)(self, S1, S1_S2, exec_mode, temp_res_dir)
                 for S1 in gen_infected_from_subset(defectives={}, K=K-i, N=N)
                 for S1_S2 in gen_infected_from_subset(defectives=S1, K=K, N=N))
             res, sum_P_S1_S2 = map(sum, zip(*results))
