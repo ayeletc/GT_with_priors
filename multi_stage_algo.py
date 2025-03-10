@@ -12,14 +12,14 @@ from sample_population import *
 from plotters import *
 from calc_bounds_and_num_of_tests import *
 from Markov_model import *
-import scipy.iosave_path
+import scipy.io
 
 
 #%% Config simulation
 N                   = 100 # for Markov: N=500, K=3 ; N=1024, K=8; N=10000, K=13 
 vecK                = [3]#[6,8,10,12,14,16,18,20,22,24]
 nmc                 = 100000
-enlarge_tests_num_by_factors = [0.5] # [0.5, 0.6, 0.7,0.8,0.9,1.0]
+enlarge_tests_num_by_factors = [0.5, 0.6, 0.7,0.8,0.9,1.0]
 Tbaseline           = 'ML' # options: 'ML', 'lb_no_priors', 'lb_with_priors', 'GE'
 methods_DD          = ['Normal']#{'Normal', 'Sum'} # options: Normal, Iterative, Sum
 third_step_type     = 'viterbi+MAP' # options: ['MAP', 'MLE', 'MAP_for_GE_all_options', 'MAP_for_GE_stop_search', 'MAP_for_GE_use_sortedPw', 'viterbi', 'viterbi+MAP']
